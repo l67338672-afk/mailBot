@@ -1,30 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const nodemailer = require("nodemailer");
 const db = require("./db");
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
-}
-
-function createTransporter() {
-  if (!process.env.BREVO_USER || !process.env.BREVO_PASS) {
-    console.log("❌ Missing SMTP credentials");
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host: "smtp-relay.brevo.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.BREVO_USER,
-      pass: process.env.BREVO_PASS,
-    },
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
-  });
 }
 
 // POST /api/broadcast
@@ -33,37 +12,34 @@ router.post("/", async (req, res) => {
     const { templateId, customerIds } = req.body;
 
     if (!templateId) {
-      return res.status(400).json({
-        success: false,
-        error: "templateId is required",
-      });
+      return res.status(400).json({ success: false, error: "templateId required" });
     }
 
     const template = db.getTemplateById(Number(templateId));
     if (!template) {
-      return res.status(404).json({
-        success: false,
-        error: "Template not found",
-      });
+      return res.status(404).json({ success: false, error: "Template not found" });
     }
 
     const allCustomers = db.getCustomers();
 
     const targets =
       Array.isArray(customerIds) && customerIds.length > 0
-        ? allCustomers.filter((c) =>
-            customerIds.map(Number).includes(c.id)
-          )
+        ? allCustomers.filter(c => customerIds.map(Number).includes(c.id))
         : allCustomers;
 
     if (targets.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "No customers found",
-      });
+      return res.status(400).json({ success: false, error: "No customers found" });
     }
 
-    const transporter = createTransporter();
+    const API_KEY = process.env.BREVO_API_KEY;
+
+    if (!API_KEY) {
+      return res.json({
+        success: true,
+        preview: true,
+        message: "No API key — preview mode"
+      });
+    }
 
     const results = [];
 
@@ -77,23 +53,33 @@ router.post("/", async (req, res) => {
       const subject = interpolate(template.subject, vars);
       const body = interpolate(template.body, vars);
 
-      console.log("📤 Sending to:", customer.email);
+      console.log("📤 Sending:", customer.email);
 
       try {
-        if (transporter) {
-          await transporter.sendMail({
-            from: `"${process.env.FROM_NAME || "MailBot"}" <${
-              process.env.FROM_EMAIL || process.env.BREVO_USER
-            }>`,
-            to: customer.email,
+        const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": API_KEY,
+          },
+          body: JSON.stringify({
+            sender: {
+              name: process.env.FROM_NAME || "MailBot",
+              email: process.env.FROM_EMAIL,
+            },
+            to: [{ email: customer.email }],
             subject,
-            text: body,
-          });
+            textContent: body,
+          }),
+        });
 
-          console.log("✅ Sent:", customer.email);
-        } else {
-          console.log("⚠️ Preview mode (no SMTP)");
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || "API error");
         }
+
+        console.log("✅ Sent:", customer.email);
 
         db.logSend({
           customer_id: customer.id,
@@ -101,12 +87,10 @@ router.post("/", async (req, res) => {
           status: "sent",
         });
 
-        results.push({
-          email: customer.email,
-          status: transporter ? "sent" : "preview",
-        });
+        results.push({ email: customer.email, status: "sent" });
+
       } catch (err) {
-        console.error("❌ Send failed:", err.message);
+        console.error("❌ Failed:", err.message);
 
         db.logSend({
           customer_id: customer.id,
@@ -124,21 +108,15 @@ router.post("/", async (req, res) => {
 
     return res.json({
       success: true,
-      summary: {
-        total: results.length,
-        sent: results.filter((r) => r.status === "sent").length,
-        failed: results.filter((r) => r.status === "failed").length,
-      },
+      total: results.length,
+      sent: results.filter(r => r.status === "sent").length,
+      failed: results.filter(r => r.status === "failed").length,
       results,
-      preview: !transporter,
     });
-  } catch (err) {
-    console.error("🔥 Broadcast route crash:", err);
 
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-    });
+  } catch (err) {
+    console.error("🔥 Crash:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
