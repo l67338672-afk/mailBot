@@ -25,6 +25,15 @@ db.prepare(`
   )
 `).run();
 
+// ✅ SENT EMAILS (CRITICAL — NO DUPLICATES)
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS sent_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER,
+    campaign_id INTEGER
+  )
+`).run();
+
 // 👉 seed campaigns if empty
 const count = db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c;
 

@@ -12,7 +12,7 @@ app.use(express.static(path.join(__dirname, "..", "frontend")));
 app.use("/api/customers", require("./customers"));
 app.use("/api/templates", require("./templates"));
 app.use("/api/broadcast", require("./broadcast"));
-app.use("/api/campaigns", require("./campaigns")); // ✅ NEW
+app.use("/api/campaigns", require("./campaigns")); // ✅ campaigns added
 
 // Health
 app.get("/api/health", (req, res) => {
@@ -28,22 +28,24 @@ app.get("*", (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 
-// Automation (non-blocking)
+// 🔥 AUTOMATION (NON-BLOCKING + REPEATING)
 const runAutomation = require("./automation");
 
+// first run after startup
 setTimeout(() => {
   try {
     runAutomation();
   } catch (e) {
-    console.error(e.message);
+    console.error("Automation error:", e.message);
   }
 }, 2000);
 
+// repeat every 1 minute
 setInterval(() => {
   try {
     runAutomation();
   } catch (e) {
-    console.error(e.message);
+    console.error("Automation error:", e.message);
   }
 }, 60000);
 
