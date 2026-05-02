@@ -278,6 +278,24 @@
     </div>
   </div>
 
+  <!-- ── Campaigns ── -->
+  <div class="card">
+    <div class="card-header">
+      <h2>📢 Campaigns</h2>
+      <button class="btn btn-ghost" onclick="loadCampaigns()">↺ Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="add-form">
+        <input id="c-name"    placeholder="Name" />
+        <input id="c-day"     type="number" placeholder="Day offset" />
+        <input id="c-subject" placeholder="Subject" />
+        <input id="c-body"    placeholder="Body" />
+        <button class="btn btn-primary" onclick="addCampaign()">+ Add</button>
+      </div>
+      <div class="list" id="campaign-list" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
   <!-- ── Broadcast ── -->
   <div class="card broadcast-panel">
     <div class="card-header">
@@ -547,10 +565,54 @@
     return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
 
+  // ── Campaigns ─────────────────────────────────────────────────────────────
+  async function loadCampaigns() {
+    try {
+      const res = await fetch("/api/campaigns");
+      const data = await res.json();
+      const list = document.getElementById("campaign-list");
+      if (!list) return;
+      list.innerHTML = "";
+      data.forEach(c => {
+        const div = document.createElement("div");
+        div.className = "list-item";
+        div.innerHTML = `
+          <div class="item-meta">
+            <div class="item-name">Day ${c.day_offset}</div>
+            <div class="item-sub">${esc ? esc(c.subject) : c.subject}</div>
+          </div>
+          <button class="btn btn-danger" onclick="deleteCampaign(${c.id})">✕</button>
+        `;
+        list.appendChild(div);
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function addCampaign() {
+    const name    = document.getElementById("c-name")?.value;
+    const day     = Number(document.getElementById("c-day")?.value);
+    const subject = document.getElementById("c-subject")?.value;
+    const body    = document.getElementById("c-body")?.value;
+    if (!name || !subject || !body) return;
+    await fetch("/api/campaigns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, day_offset: day, subject, body })
+    });
+    loadCampaigns();
+  }
+
+  async function deleteCampaign(id) {
+    await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
+    loadCampaigns();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   (async () => {
     await checkHealth();
-    await Promise.all([loadCustomers(), loadTemplates()]);
+    await Promise.all([loadCustomers(), loadTemplates(), loadCampaigns()]);
   })();
 </script>
 </body>

@@ -4,8 +4,13 @@ const db = require("./database");
 
 // GET all customers
 router.get("/", (req, res) => {
-  const customers = db.prepare("SELECT * FROM customers ORDER BY id DESC").all();
-  res.json(customers);
+  try {
+    const customers = db.prepare("SELECT * FROM customers").all();
+    res.json(customers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch customers" });
+  }
 });
 
 // ADD new customer (FIXED with created_at)
