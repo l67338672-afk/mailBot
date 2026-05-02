@@ -1,12 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const db = require("./database"); 
+const db = require("./database"); // ✅ SQLite
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
-// POST /api/broadcast
 router.post("/", async (req, res) => {
   try {
     const { templateId, customerIds } = req.body;
@@ -15,7 +14,12 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, error: "templateId required" });
     }
 
+    console.log("📨 Broadcast — templateId received:", templateId);
+
     const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(Number(templateId));
+
+    console.log("📋 Template resolved:", template ? template.name : "NOT FOUND");
+
     if (!template) {
       return res.status(404).json({ success: false, error: "Template not found" });
     }
@@ -33,7 +37,7 @@ router.post("/", async (req, res) => {
 
     const API_KEY = process.env.BREVO_API_KEY;
 
-    // No API key = preview mode
+    // Preview mode — no API key
     if (!API_KEY) {
       const previewResults = targets.map(c => ({ email: c.email, status: "preview" }));
       return res.json({
@@ -44,33 +48,21 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Real sending via Brevo API
     const results = [];
 
     for (const customer of targets) {
-      const vars = {
-        name: customer.name,
-        email: customer.email,
-        company: customer.company || "",
-      };
-
+      const vars = { name: customer.name, email: customer.email, company: customer.company || "" };
       const subject = interpolate(template.subject, vars);
-      const body = interpolate(template.body, vars);
+      const body    = interpolate(template.body, vars);
 
-      console.log("📤 Sending to:", customer.email);
+      console.log(`📤 To: ${customer.email} | Subject: ${subject}`);
 
       try {
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key": API_KEY,
-          },
+          headers: { "Content-Type": "application/json", "api-key": API_KEY },
           body: JSON.stringify({
-            sender: {
-              name: process.env.FROM_NAME || "MailBot",
-              email: process.env.FROM_EMAIL,
-            },
+            sender: { name: process.env.FROM_NAME || "MailBot", email: process.env.FROM_EMAIL },
             to: [{ email: customer.email }],
             subject,
             textContent: body,
@@ -78,34 +70,23 @@ router.post("/", async (req, res) => {
         });
 
         const data = await response.json();
+        if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
 
-        if (!response.ok) {
-          throw new Error(data.message || `Brevo API error ${response.status}`);
-        }
+        console.log("✅ Sent:", customer.email);
 
-        console.log("✅ Sent to:", customer.email);
-
-        db.prepare(`
-  INSERT INTO send_logs (customer_id, template_id, status, sent_at)
-  VALUES (?, ?, ?, ?)
-`).run(customer.id, template.id, "sent", new Date().toISOString());
+        // ✅ Fixed: direct SQL, no db.logSend()
+        db.prepare("INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)")
+          .run(customer.id, template.id, "sent", new Date().toISOString());
 
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
 
-        db.prepare(`
-  INSERT INTO send_logs (customer_id, template_id, status, sent_at)
-  VALUES (?, ?, ?, ?)
-`).run(customer.id, template.id, "sent", new Date().toISOString());
-// use "failed" in the catch block
+        db.prepare("INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)")
+          .run(customer.id, template.id, "failed", new Date().toISOString());
 
-        results.push({
-          email: customer.email,
-          status: "failed",
-          error: err.message,
-        });
+        results.push({ email: customer.email, status: "failed", error: err.message });
       }
     }
 

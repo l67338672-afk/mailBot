@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const db = require("./database"); // ✅ SQLite, not db.js
+const db = require("./database"); // ✅ SQLite — NOT db.js
 
 // GET /api/templates
 router.get("/", (req, res) => {

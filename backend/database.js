@@ -25,7 +25,7 @@ db.prepare(`
   )
 `).run();
 
-// ✅ SENT EMAILS (CRITICAL — NO DUPLICATES)
+// SENT EMAILS (dedup guard for automation)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS sent_emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,8 +34,7 @@ db.prepare(`
   )
 `).run();
 
-// SEND LOGS (for broadcast tracking)
-// TEMPLATES
+// TEMPLATES (for broadcast)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,55 +45,48 @@ db.prepare(`
   )
 `).run();
 
+// SEND LOGS (for broadcast history)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS send_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_id INTEGER,
-    template_name TEXT,
+    template_id INTEGER,
+    status TEXT,
     sent_at TEXT
   )
 `).run();
 
-// ✅ FIX: Add missing columns to send_logs if they don't exist yet.
-// ALTER TABLE fails silently if the column is already present (try/catch per column).
+// Safe migrations — ignored if columns already exist
 for (const migration of [
   "ALTER TABLE send_logs ADD COLUMN template_id INTEGER",
   "ALTER TABLE send_logs ADD COLUMN status TEXT",
 ]) {
-  try {
-    db.prepare(migration).run();
-  } catch (_) {
-    // Column already exists — safe to ignore
-  }
+  try { db.prepare(migration).run(); } catch (_) {}
 }
 
-// 👉 seed campaigns if empty
-const count = db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c;
-
-if (count === 0) {
-  const insert = db.prepare(`
-    INSERT INTO campaigns (name, day_offset, subject, body)
-    VALUES (?, ?, ?, ?)
-  `);
-
-  insert.run("Welcome", 0, "Welcome!", "Hi {{name}}, welcome!");
-  insert.run("Reminder", 3, "We miss you 👀", "Hey {{name}}, come back!");
-  insert.run("Offer", 7, "Special Offer 🎁", "Hi {{name}}, here's an offer!");
+// ── Seed campaigns if empty ──────────────────────────────────────────────────
+const campaignCount = db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c;
+if (campaignCount === 0) {
+  const insertCampaign = db.prepare(
+    "INSERT INTO campaigns (name, day_offset, subject, body) VALUES (?, ?, ?, ?)"
+  );
+  insertCampaign.run("Welcome",  0, "Welcome!",          "Hi {{name}}, welcome!");
+  insertCampaign.run("Reminder", 3, "We miss you 👀",    "Hey {{name}}, come back!");
+  insertCampaign.run("Offer",    7, "Special Offer 🎁",  "Hi {{name}}, here's an offer!");
 }
 
-// 👉 seed templates if empty
+// ── Seed templates if empty ──────────────────────────────────────────────────
+// CRITICAL: broadcast.js reads from THIS table. It must not be empty.
 const templateCount = db.prepare("SELECT COUNT(*) as c FROM templates").get().c;
-
 if (templateCount === 0) {
-  const insertTpl = db.prepare(`
-    INSERT INTO templates (name, subject, body, created_at)
-    VALUES (?, ?, ?, ?)
-  `);
+  const insertTemplate = db.prepare(
+    "INSERT INTO templates (name, subject, body, created_at) VALUES (?, ?, ?, ?)"
+  );
   const now = new Date().toISOString();
-  insertTpl.run("Welcome",  "Welcome 👋",          "Hi {{name}}, thanks for joining!", now);
-  insertTpl.run("Reminder", "We miss you 👀",       "Hey {{name}}, come back soon!",    now);
-  insertTpl.run("Offer",    "Special Offer 🎁",     "Hi {{name}}, here's 20% off!",     now);
-  insertTpl.run("Comeback", "It's been a while 🙂", "Hey {{name}}, we saved a slot!",   now);
+  insertTemplate.run("Welcome",  "Welcome 👋",         "Hi {{name}}, thanks for joining!",    now);
+  insertTemplate.run("Reminder", "We miss you 👀",     "Hey {{name}}, come back soon!",       now);
+  insertTemplate.run("Offer",    "Special Offer 🎁",   "Hi {{name}}, here's 20% off!",        now);
+  insertTemplate.run("Comeback", "It's been a while",  "Hey {{name}}, we saved a slot!",      now);
 }
 
 module.exports = db;
