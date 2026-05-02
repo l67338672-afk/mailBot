@@ -1,6 +1,6 @@
 const express = require("express");
-const router = express.Router();
-const db = require("./database"); // ✅ SQLite
+const router  = express.Router();
+const db      = require("./database");
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
@@ -14,11 +14,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, error: "templateId required" });
     }
 
-    console.log("📨 Broadcast — templateId received:", templateId);
+    console.log("📨 templateId received:", templateId, "| type:", typeof templateId);
 
     const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(Number(templateId));
 
-    console.log("📋 Template resolved:", template ? template.name : "NOT FOUND");
+    console.log("📋 Template resolved:", template ? `[${template.id}] ${template.name}` : "NOT FOUND");
 
     if (!template) {
       return res.status(404).json({ success: false, error: "Template not found" });
@@ -37,32 +37,46 @@ router.post("/", async (req, res) => {
 
     const API_KEY = process.env.BREVO_API_KEY;
 
-    // Preview mode — no API key
+    // Preview mode
     if (!API_KEY) {
-      const previewResults = targets.map(c => ({ email: c.email, status: "preview" }));
+      console.log("⚠️ No BREVO_API_KEY — preview mode. Template:", template.name);
       return res.json({
         success: true,
         preview: true,
-        summary: { total: previewResults.length, sent: 0, failed: 0 },
-        results: previewResults,
+        summary: { total: targets.length, sent: 0, failed: 0 },
+        results: targets.map(c => ({ email: c.email, status: "preview" })),
       });
     }
 
     const results = [];
+    const logStmt = db.prepare(
+      "INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)"
+    );
 
     for (const customer of targets) {
-      const vars = { name: customer.name, email: customer.email, company: customer.company || "" };
+      const vars = {
+        name:    customer.name,
+        email:   customer.email,
+        company: customer.company || "",
+      };
+
       const subject = interpolate(template.subject, vars);
       const body    = interpolate(template.body, vars);
 
-      console.log(`📤 To: ${customer.email} | Subject: ${subject}`);
+      console.log(`📤 Sending [${template.name}] → ${customer.email} | Subject: ${subject}`);
 
       try {
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "api-key": API_KEY },
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": API_KEY,
+          },
           body: JSON.stringify({
-            sender: { name: process.env.FROM_NAME || "MailBot", email: process.env.FROM_EMAIL },
+            sender: {
+              name:  process.env.FROM_NAME  || "MailBot",
+              email: process.env.FROM_EMAIL,
+            },
             to: [{ email: customer.email }],
             subject,
             textContent: body,
@@ -72,20 +86,13 @@ router.post("/", async (req, res) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
 
-        console.log("✅ Sent:", customer.email);
-
-        // ✅ Fixed: direct SQL, no db.logSend()
-        db.prepare("INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)")
-          .run(customer.id, template.id, "sent", new Date().toISOString());
-
+        console.log("✅ Sent to:", customer.email);
+        logStmt.run(customer.id, template.id, "sent",   new Date().toISOString());
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
-
-        db.prepare("INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)")
-          .run(customer.id, template.id, "failed", new Date().toISOString());
-
+        logStmt.run(customer.id, template.id, "failed", new Date().toISOString());
         results.push({ email: customer.email, status: "failed", error: err.message });
       }
     }
@@ -94,8 +101,8 @@ router.post("/", async (req, res) => {
       success: true,
       preview: false,
       summary: {
-        total: results.length,
-        sent: results.filter(r => r.status === "sent").length,
+        total:  results.length,
+        sent:   results.filter(r => r.status === "sent").length,
         failed: results.filter(r => r.status === "failed").length,
       },
       results,

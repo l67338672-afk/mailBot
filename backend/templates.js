@@ -1,6 +1,6 @@
 const express = require("express");
-const router = express.Router();
-const db = require("./database"); // ✅ SQLite — NOT db.js
+const router  = express.Router();
+const db      = require("./database"); // ✅ SQLite — same source as broadcast.js
 
 // GET /api/templates
 router.get("/", (req, res) => {
@@ -19,10 +19,9 @@ router.post("/", (req, res) => {
     return res.status(400).json({ success: false, error: "name, subject, and body are required" });
   }
   try {
-    const result = db.prepare(`
-      INSERT INTO templates (name, subject, body, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(name, subject, body, new Date().toISOString());
+    const result = db.prepare(
+      "INSERT INTO templates (name, subject, body, created_at) VALUES (?,?,?,?)"
+    ).run(name, subject, body, new Date().toISOString());
     res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, subject, body } });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
