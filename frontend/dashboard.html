@@ -1,108 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
   <title>MailBot</title>
-  <style>
-    body { font-family: Arial; background: #0f172a; color: white; padding: 20px; }
-    .box { background: #1e293b; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-    button { padding: 10px 15px; cursor: pointer; }
-  </style>
 </head>
 <body>
+  <h1>MailBot</h1>
 
-<h1>MailBot</h1>
+  <h2>Customers</h2>
+  <ul id="customers"></ul>
 
-<div class="box">
-  <h3>Customers</h3>
-  <div id="customers"></div>
-</div>
+  <h2>Templates</h2>
+  <select id="templates"></select>
 
-<div class="box">
-  <h3>Templates</h3>
-  <select id="templateSelect"></select>
-</div>
+  <h2>Broadcast</h2>
+  <button onclick="send()">Send to All</button>
 
-<div class="box">
-  <h3>Broadcast</h3>
-  <button onclick="sendBroadcast()">Send to Selected</button>
-</div>
+  <script>
+    async function load() {
+      const customers = await fetch("/api/customers").then(r => r.json());
+      const templates = await fetch("/api/templates").then(r => r.json());
 
-<script>
-let customers = [];
-let templates = [];
+      document.getElementById("customers").innerHTML =
+        customers.map(c => `<li>${c.name} (${c.email})</li>`).join("");
 
-// LOAD CUSTOMERS
-async function loadCustomers() {
-  const res = await fetch("/api/customers");
-  const data = await res.json();
-  customers = data;
+      document.getElementById("templates").innerHTML =
+        templates.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+    }
 
-  const div = document.getElementById("customers");
-  div.innerHTML = "";
+    async function send() {
+      const templateId = document.getElementById("templates").value;
 
-  customers.forEach(c => {
-    div.innerHTML += `
-      <label>
-        <input type="checkbox" value="${c.id}" />
-        ${c.name} (${c.email})
-      </label><br/>
-    `;
-  });
-}
+      const res = await fetch("/api/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId })
+      });
 
-// LOAD TEMPLATES
-async function loadTemplates() {
-  const res = await fetch("/api/templates");
-  const data = await res.json();
-  templates = data;
+      const data = await res.json();
+      alert("Sent: " + data.total);
+    }
 
-  const select = document.getElementById("templateSelect");
-  select.innerHTML = "";
-
-  templates.forEach(t => {
-    select.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-  });
-}
-
-// SEND BROADCAST
-async function sendBroadcast() {
-  const selectedTemplate = document.getElementById("templateSelect").value;
-
-  const selectedCustomers = [...document.querySelectorAll("input[type=checkbox]:checked")]
-    .map(cb => Number(cb.value));
-
-  console.log("🚀 Sending request...");
-  console.log("Template:", selectedTemplate);
-  console.log("Customers:", selectedCustomers);
-
-  try {
-    const res = await fetch("/api/broadcast", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        templateId: selectedTemplate,
-        customerIds: selectedCustomers
-      })
-    });
-
-    const data = await res.json();
-
-    console.log("✅ Response:", data);
-    alert(JSON.stringify(data, null, 2));
-
-  } catch (err) {
-    console.error("❌ ERROR:", err);
-    alert("Request failed: " + err.message);
-  }
-}
-
-// INIT
-loadCustomers();
-loadTemplates();
-</script>
-
+    load();
+  </script>
 </body>
 </html>
