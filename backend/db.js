@@ -1,50 +1,29 @@
-let customers = [];
-let templates = [
-  {
-    id: 1,
-    name: "Welcome",
-    subject: "Welcome {{name}} 👋",
-    body: "Thanks for visiting us!"
-  },
-  {
-    id: 2,
-    name: "Reminder",
-    subject: "We miss you {{name}}",
-    body: "Come back and visit us again!"
-  },
-  {
-    id: 3,
-    name: "Offer",
-    subject: "Special offer 🎁",
-    body: "Flat 20% off for you!"
-  },
-  {
-    id: 4,
-    name: "Comeback",
-    subject: "It’s been a while {{name}}",
-    body: "We’d love to see you again!"
-  }
-];
-
-let sendLogs = [];
+const db = require("./database");
 
 function getCustomers() {
-  return customers;
+  return db.prepare("SELECT * FROM customers").all();
 }
 
 function addCustomer(data) {
-  const customer = {
-    id: Date.now(),
-    name: data.name,
-    email: data.email,
-    company: data.company || "",
-    created_at: new Date(),
-    last_stage_sent: 0
-  };
+  const result = db.prepare(`
+    INSERT INTO customers (name, email, company, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    data.name,
+    data.email,
+    data.company || "",
+    new Date().toISOString()
+  );
 
-  customers.push(customer);
-  return customer;
+  return { id: result.lastInsertRowid };
 }
+
+const templates = [
+  { id: 1, name: "Welcome", subject: "Welcome 👋", body: "Thanks for visiting!" },
+  { id: 2, name: "Reminder", subject: "We miss you!", body: "Come back soon!" },
+  { id: 3, name: "Offer", subject: "Special Offer 🎁", body: "20% off!" },
+  { id: 4, name: "Comeback", subject: "It’s been a while", body: "Visit again!" }
+];
 
 function getTemplates() {
   return templates;
@@ -55,11 +34,15 @@ function getTemplateById(id) {
 }
 
 function logSend(data) {
-  sendLogs.push({
-    id: Date.now(),
-    ...data,
-    created_at: new Date()
-  });
+  db.prepare(`
+    INSERT INTO send_logs (customer_id, template_id, status, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    data.customer_id,
+    data.template_id,
+    data.status,
+    new Date().toISOString()
+  );
 }
 
 module.exports = {
