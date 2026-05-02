@@ -18,11 +18,13 @@ router.post("/", (req, res) => {
   try {
     const { name, email, company } = req.body;
 
+    console.log("🔥 ADD REQUEST:", name, email, company);
+
     if (!name || !email) {
-      return res.status(400).json({ error: "Missing fields" });
+      return res.status(400).json({ error: "Missing name or email" });
     }
 
-    db.prepare(`
+    const result = db.prepare(`
       INSERT INTO customers (name, email, company, created_at)
       VALUES (?, ?, ?, ?)
     `).run(
@@ -32,10 +34,12 @@ router.post("/", (req, res) => {
       new Date().toISOString()
     );
 
+    console.log("✅ INSERT RESULT:", result);
+
     res.json({ success: true });
   } catch (err) {
-    console.error("Customer add error:", err);
-    res.status(500).json({ error: "Failed to add customer" });
+    console.error("❌ INSERT ERROR:", err);
+    res.status(500).json({ error: "Insert failed" });
   }
 });
 
@@ -44,7 +48,11 @@ router.delete("/:id", (req, res) => {
   try {
     const { id } = req.params;
 
-    db.prepare("DELETE FROM customers WHERE id = ?").run(id);
+    const result = db
+      .prepare("DELETE FROM customers WHERE id = ?")
+      .run(id);
+
+    console.log("🗑️ DELETE RESULT:", result);
 
     res.json({ success: true });
   } catch (err) {
