@@ -361,7 +361,8 @@
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+if (data.success === false) throw new Error(data.error || "Request failed");
     return data;
   }
 

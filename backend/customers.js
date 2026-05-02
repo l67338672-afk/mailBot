@@ -6,7 +6,9 @@ const db = require("./database");
 router.get("/", (req, res) => {
   try {
     const customers = db.prepare("SELECT * FROM customers").all();
-    res.json(customers);
+    // FIX: wrap in { success, data } so the frontend api() helper
+    // doesn't throw on !data.success, and destructuring { data } works.
+    res.json({ success: true, data: customers });
   } catch (err) {
     console.error("Customer fetch error:", err);
     res.status(500).json({ error: "Failed to fetch customers" });
