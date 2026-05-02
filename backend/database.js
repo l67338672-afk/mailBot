@@ -1,6 +1,6 @@
 const Database = require("better-sqlite3");
 
-const db = new Database("mailbot.db");
+const db = new Database("mailbot_v2.db");
 
 // CUSTOMERS
 db.prepare(`
