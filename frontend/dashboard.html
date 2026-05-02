@@ -1,46 +1,557 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>MailBot</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MailBot Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #6c63ff;
+      --accent-hover: #7d75ff;
+      --success: #22c55e;
+      --error: #ef4444;
+      --warn: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    header .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    header .logo span { color: var(--accent); }
+    header .badge {
+      margin-left: auto;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
+
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .card-header h2 { font-size: 15px; font-weight: 600; }
+    .card-header .count {
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface2);
+      padding: 2px 8px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+    }
+    .card-body { padding: 16px 20px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 14px;
+      border-radius: 7px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-ghost     { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: var(--border); }
+    .btn-success   { background: var(--success); color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #16a34a; }
+    .btn-danger    { background: transparent; color: var(--error); border: 1px solid var(--error); padding: 3px 8px; font-size: 11px; }
+    .btn-danger:hover:not(:disabled) { background: var(--error); color: #fff; }
+
+    /* ── Lists ── */
+    .list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+    .list:empty::after { content: "Nothing here yet."; color: var(--muted); font-size: 13px; display: block; padding: 12px 0; }
+
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid transparent;
+      transition: border-color 0.15s;
+      cursor: pointer;
+    }
+    .list-item:hover { border-color: var(--border); }
+    .list-item.selected { border-color: var(--accent); }
+
+    .list-item input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+
+    .item-meta { flex: 1; min-width: 0; }
+    .item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-sub  { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+    .list-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+    /* ── Template selector ── */
+    .select-wrap { position: relative; }
+    select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      appearance: none;
+      cursor: pointer;
+      outline: none;
+    }
+    select:focus { border-color: var(--accent); }
+
+    /* ── Toast / Banner ── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      min-width: 260px;
+      max-width: 420px;
+      padding: 13px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(.34,1.56,.64,1);
+      pointer-events: none;
+      z-index: 9999;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.success { background: var(--success); color: #fff; }
+    #toast.error   { background: var(--error);   color: #fff; }
+    #toast.info    { background: var(--accent);  color: #fff; }
+    #toast.warn    { background: var(--warn);    color: #000; }
+
+    /* ── Broadcast panel ── */
+    .broadcast-panel { grid-column: 1 / -1; }
+    .broadcast-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: end; }
+    @media (max-width: 640px) { .broadcast-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+
+    /* ── Results table ── */
+    .results-wrap { margin-top: 16px; display: none; }
+    .results-wrap.visible { display: block; }
+    .summary-bar {
+      display: flex;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .summary-item { font-size: 13px; }
+    .summary-item strong { color: var(--success); }
+    .summary-item.fail strong { color: var(--error); }
+
+    .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .result-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    .result-table td { padding: 7px 10px; border-bottom: 1px solid var(--surface2); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .pill.sent   { background: rgba(34,197,94,0.15); color: var(--success); }
+    .pill.failed { background: rgba(239,68,68,0.15); color: var(--error); }
+    .pill.preview { background: rgba(108,99,255,0.15); color: var(--accent); }
+
+    /* ── Spinner ── */
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Form row ── */
+    .add-form { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .add-form input {
+      flex: 1;
+      min-width: 120px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 13px;
+      outline: none;
+    }
+    .add-form input:focus { border-color: var(--accent); }
+    .add-form input::placeholder { color: var(--muted); }
+
+    /* scrollbar */
+    .list::-webkit-scrollbar { width: 5px; }
+    .list::-webkit-scrollbar-track { background: transparent; }
+    .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
 </head>
 <body>
-  <h1>MailBot</h1>
 
-  <h2>Customers</h2>
-  <ul id="customers"></ul>
+<header>
+  <div class="logo">Mail<span>Bot</span></div>
+  <div class="badge" id="health-badge">⬤ connecting…</div>
+</header>
 
-  <h2>Templates</h2>
-  <select id="templates"></select>
+<main>
 
-  <h2>Broadcast</h2>
-  <button onclick="send()">Send to All</button>
+  <!-- ── Customers ── -->
+  <div class="card">
+    <div class="card-header">
+      <h2>👥 Customers</h2>
+      <span class="count" id="customer-count">0</span>
+      <button class="btn btn-ghost" onclick="loadCustomers()">↺ Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="list" id="customer-list"></div>
 
-  <script>
-    async function load() {
-      const customers = await fetch("/api/customers").then(r => r.json());
-      const templates = await fetch("/api/templates").then(r => r.json());
+      <div class="list-actions">
+        <button class="btn btn-ghost" onclick="selectAllCustomers()">Select All</button>
+        <button class="btn btn-ghost" onclick="deselectAllCustomers()">Deselect All</button>
+      </div>
 
-      document.getElementById("customers").innerHTML =
-        customers.map(c => `<li>${c.name} (${c.email})</li>`).join("");
+      <!-- Add customer form -->
+      <div class="add-form">
+        <input id="new-name"    placeholder="Name" />
+        <input id="new-email"   placeholder="Email" type="email" />
+        <input id="new-company" placeholder="Company" />
+        <button class="btn btn-primary" onclick="addCustomer()">+ Add</button>
+      </div>
+    </div>
+  </div>
 
-      document.getElementById("templates").innerHTML =
-        templates.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+  <!-- ── Templates ── -->
+  <div class="card">
+    <div class="card-header">
+      <h2>📄 Templates</h2>
+      <span class="count" id="template-count">0</span>
+      <button class="btn btn-ghost" onclick="loadTemplates()">↺ Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="list" id="template-list"></div>
+
+      <div style="margin-top:14px; font-size:12px; color:var(--muted);">
+        Supports <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{name}}</code>,
+        <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{email}}</code>,
+        <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{company}}</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Broadcast ── -->
+  <div class="card broadcast-panel">
+    <div class="card-header">
+      <h2>🚀 Broadcast</h2>
+    </div>
+    <div class="card-body">
+      <div class="broadcast-grid">
+        <div class="field">
+          <label>Template</label>
+          <div class="select-wrap">
+            <select id="broadcast-template">
+              <option value="">— select a template —</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="flex-direction:row; gap:10px;">
+          <button class="btn btn-ghost"    id="btn-send-selected" onclick="sendBroadcast(false)">
+            Send to Selected
+          </button>
+          <button class="btn btn-success"  id="btn-send-all"      onclick="sendBroadcast(true)">
+            Send to All
+          </button>
+        </div>
+      </div>
+
+      <div class="results-wrap" id="results-wrap">
+        <div class="summary-bar" id="summary-bar"></div>
+        <table class="result-table">
+          <thead>
+            <tr><th>Email</th><th>Status</th><th>Note</th></tr>
+          </thead>
+          <tbody id="result-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  let customers = [];
+  let templates = [];
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function toast(msg, type = "info") {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
+  }
+
+  // ── API helper ────────────────────────────────────────────────────────────
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...opts,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  async function checkHealth() {
+    const badge = document.getElementById("health-badge");
+    try {
+      await fetch("/api/health");
+      badge.textContent = "⬤ online";
+      badge.style.color = "var(--success)";
+    } catch {
+      badge.textContent = "⬤ offline";
+      badge.style.color = "var(--error)";
+    }
+  }
+
+  // ── Customers ─────────────────────────────────────────────────────────────
+  async function loadCustomers() {
+    try {
+      const { data } = await api("/api/customers");
+      customers = data;
+      renderCustomers();
+      document.getElementById("customer-count").textContent = customers.length;
+    } catch (e) {
+      toast("Failed to load customers: " + e.message, "error");
+    }
+  }
+
+  function renderCustomers() {
+    const list = document.getElementById("customer-list");
+    if (customers.length === 0) { list.innerHTML = ""; return; }
+    list.innerHTML = customers.map(c => `
+      <div class="list-item" data-id="${c.id}" onclick="toggleCustomer(${c.id}, event)">
+        <input type="checkbox" id="c-${c.id}" onclick="event.stopPropagation(); toggleCustomer(${c.id}, event)" />
+        <div class="item-meta">
+          <div class="item-name">${esc(c.name)}</div>
+          <div class="item-sub">${esc(c.email)}${c.company ? " · " + esc(c.company) : ""}</div>
+        </div>
+        <button class="btn btn-danger" onclick="event.stopPropagation(); deleteCustomer(${c.id})">✕</button>
+      </div>
+    `).join("");
+  }
+
+  function toggleCustomer(id, e) {
+    // If the click originated from the delete button, skip
+    if (e && e.target.tagName === "BUTTON") return;
+    const cb = document.getElementById(`c-${id}`);
+    cb.checked = !cb.checked;
+    cb.closest(".list-item").classList.toggle("selected", cb.checked);
+  }
+
+  function selectAllCustomers() {
+    document.querySelectorAll("#customer-list .list-item").forEach(el => {
+      el.classList.add("selected");
+      el.querySelector("input").checked = true;
+    });
+  }
+
+  function deselectAllCustomers() {
+    document.querySelectorAll("#customer-list .list-item").forEach(el => {
+      el.classList.remove("selected");
+      el.querySelector("input").checked = false;
+    });
+  }
+
+  async function addCustomer() {
+    const name    = document.getElementById("new-name").value.trim();
+    const email   = document.getElementById("new-email").value.trim();
+    const company = document.getElementById("new-company").value.trim();
+    if (!name || !email) { toast("Name and email are required", "warn"); return; }
+    try {
+      await api("/api/customers", { method: "POST", body: { name, email, company } });
+      document.getElementById("new-name").value = "";
+      document.getElementById("new-email").value = "";
+      document.getElementById("new-company").value = "";
+      toast("Customer added!", "success");
+      await loadCustomers();
+    } catch (e) {
+      toast("Error: " + e.message, "error");
+    }
+  }
+
+  async function deleteCustomer(id) {
+    try {
+      await api(`/api/customers/${id}`, { method: "DELETE" });
+      toast("Customer removed", "info");
+      await loadCustomers();
+    } catch (e) {
+      toast("Error: " + e.message, "error");
+    }
+  }
+
+  // ── Templates ─────────────────────────────────────────────────────────────
+  async function loadTemplates() {
+    try {
+      const { data } = await api("/api/templates");
+      templates = data;
+      renderTemplates();
+      populateTemplateSelect();
+      document.getElementById("template-count").textContent = templates.length;
+    } catch (e) {
+      toast("Failed to load templates: " + e.message, "error");
+    }
+  }
+
+  function renderTemplates() {
+    const list = document.getElementById("template-list");
+    if (templates.length === 0) { list.innerHTML = ""; return; }
+    list.innerHTML = templates.map(t => `
+      <div class="list-item">
+        <div class="item-meta">
+          <div class="item-name">${esc(t.name)}</div>
+          <div class="item-sub">Subject: ${esc(t.subject)}</div>
+        </div>
+        <button class="btn btn-danger" onclick="deleteTemplate(${t.id})">✕</button>
+      </div>
+    `).join("");
+  }
+
+  function populateTemplateSelect() {
+    const sel = document.getElementById("broadcast-template");
+    const current = sel.value;
+    sel.innerHTML = `<option value="">— select a template —</option>` +
+      templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+    if (current) sel.value = current;
+  }
+
+  async function deleteTemplate(id) {
+    try {
+      await api(`/api/templates/${id}`, { method: "DELETE" });
+      toast("Template removed", "info");
+      await loadTemplates();
+    } catch (e) {
+      toast("Error: " + e.message, "error");
+    }
+  }
+
+  // ── Broadcast ─────────────────────────────────────────────────────────────
+  async function sendBroadcast(all = false) {
+    const templateId = document.getElementById("broadcast-template").value;
+    if (!templateId) { toast("Please select a template first", "warn"); return; }
+
+    let customerIds = null;
+    if (!all) {
+      customerIds = [...document.querySelectorAll("#customer-list input:checked")]
+        .map(cb => parseInt(cb.id.replace("c-", "")));
+      if (customerIds.length === 0) {
+        toast("Select at least one customer, or use Send to All", "warn");
+        return;
+      }
     }
 
-    async function send() {
-      const templateId = document.getElementById("templates").value;
+    const btnSel = document.getElementById("btn-send-selected");
+    const btnAll = document.getElementById("btn-send-all");
+    btnSel.disabled = btnAll.disabled = true;
+    btnSel.innerHTML = btnAll.innerHTML = `<span class="spinner"></span> Sending…`;
 
-      const res = await fetch("/api/broadcast", {
+    try {
+      const { summary, results, preview } = await api("/api/broadcast", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId })
+        body: { templateId: parseInt(templateId), customerIds },
       });
 
-      const data = await res.json();
-      alert("Sent: " + data.total);
+      showResults(summary, results, preview);
+      toast(
+        `${preview ? "[Preview] " : ""}Sent ${summary.sent}/${summary.total} emails`,
+        summary.failed > 0 ? "warn" : "success"
+      );
+    } catch (e) {
+      toast("Broadcast failed: " + e.message, "error");
+    } finally {
+      btnSel.disabled = btnAll.disabled = false;
+      btnSel.textContent = "Send to Selected";
+      btnAll.textContent = "Send to All";
     }
+  }
 
-    load();
-  </script>
+  function showResults(summary, results, preview) {
+    const wrap = document.getElementById("results-wrap");
+    wrap.classList.add("visible");
+
+    document.getElementById("summary-bar").innerHTML = `
+      <div class="summary-item"><strong>${summary.total}</strong> total</div>
+      <div class="summary-item"><strong>${summary.sent}</strong> sent</div>
+      ${summary.failed > 0 ? `<div class="summary-item fail"><strong>${summary.failed}</strong> failed</div>` : ""}
+      ${preview ? `<div class="summary-item" style="color:var(--accent)">⚠ Preview mode (no SMTP configured)</div>` : ""}
+    `;
+
+    document.getElementById("result-body").innerHTML = results.map(r => `
+      <tr>
+        <td>${esc(r.email)}</td>
+        <td><span class="pill ${preview ? "preview" : r.status}">${preview ? "preview" : r.status}</span></td>
+        <td style="color:var(--muted);font-size:11px">${r.error ? esc(r.error) : ""}</td>
+      </tr>
+    `).join("");
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function esc(str) {
+    if (!str) return "";
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  (async () => {
+    await checkHealth();
+    await Promise.all([loadCustomers(), loadTemplates()]);
+  })();
+</script>
 </body>
 </html>
