@@ -85,11 +85,10 @@ router.post("/", async (req, res) => {
 
         console.log("✅ Sent to:", customer.email);
 
-        db.logSend({
-          customer_id: customer.id,
-          template_id: template.id,
-          status: "sent",
-        });
+        db.prepare(`
+  INSERT INTO send_logs (customer_id, template_id, status, sent_at)
+  VALUES (?, ?, ?, ?)
+`).run(customer.id, template.id, "sent", new Date().toISOString());
 
         results.push({ email: customer.email, status: "sent" });
 

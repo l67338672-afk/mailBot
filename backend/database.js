@@ -82,4 +82,19 @@ if (count === 0) {
   insert.run("Offer", 7, "Special Offer 🎁", "Hi {{name}}, here's an offer!");
 }
 
+// 👉 seed templates if empty
+const templateCount = db.prepare("SELECT COUNT(*) as c FROM templates").get().c;
+
+if (templateCount === 0) {
+  const insertTpl = db.prepare(`
+    INSERT INTO templates (name, subject, body, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  const now = new Date().toISOString();
+  insertTpl.run("Welcome",  "Welcome 👋",          "Hi {{name}}, thanks for joining!", now);
+  insertTpl.run("Reminder", "We miss you 👀",       "Hey {{name}}, come back soon!",    now);
+  insertTpl.run("Offer",    "Special Offer 🎁",     "Hi {{name}}, here's 20% off!",     now);
+  insertTpl.run("Comeback", "It's been a while 🙂", "Hey {{name}}, we saved a slot!",   now);
+}
+
 module.exports = db;
