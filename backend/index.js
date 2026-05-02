@@ -8,17 +8,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "..", "frontend")));
 
-// Routes
+// ROUTES
 app.use("/api/customers", require("./customers"));
 app.use("/api/templates", require("./templates"));
 app.use("/api/broadcast", require("./broadcast"));
+app.use("/api/campaigns", require("./campaigns")); // ✅ NEW
 
-// Health check
+// Health
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// Serve dashboard for all other routes
+// Serve frontend
 app.get("*", (req, res) => {
   if (!req.path.startsWith("/api")) {
     res.sendFile(path.join(__dirname, "..", "frontend", "dashboard.html"));
@@ -27,28 +28,25 @@ app.get("*", (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 
-// 🔥 AUTOMATION (FIXED — NON-BLOCKING)
+// Automation (non-blocking)
 const runAutomation = require("./automation");
 
-// run once after server starts (delay = 2 sec)
 setTimeout(() => {
   try {
     runAutomation();
   } catch (e) {
-    console.error("Automation error:", e.message);
+    console.error(e.message);
   }
 }, 2000);
 
-// run every 60 seconds
 setInterval(() => {
   try {
     runAutomation();
   } catch (e) {
-    console.error("Automation error:", e.message);
+    console.error(e.message);
   }
 }, 60000);
 
-// start server
 app.listen(PORT, () => {
   console.log(`Server running → http://localhost:${PORT}`);
 });
