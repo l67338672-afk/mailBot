@@ -34,6 +34,16 @@ db.prepare(`
   )
 `).run();
 
+// SEND LOGS (for broadcast tracking)
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS send_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER,
+    template_name TEXT,
+    sent_at TEXT
+  )
+`).run();
+
 // 👉 seed campaigns if empty
 const count = db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c;
 
