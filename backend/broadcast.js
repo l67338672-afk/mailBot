@@ -15,12 +15,12 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, error: "templateId required" });
     }
 
-    const template = db.getTemplateById(Number(templateId));
+    const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(Number(templateId));
     if (!template) {
       return res.status(404).json({ success: false, error: "Template not found" });
     }
 
-    const allCustomers = db.getCustomers();
+    const allCustomers = db.prepare("SELECT * FROM customers").all();
 
     const targets =
       Array.isArray(customerIds) && customerIds.length > 0
@@ -96,11 +96,11 @@ router.post("/", async (req, res) => {
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
 
-        db.logSend({
-          customer_id: customer.id,
-          template_id: template.id,
-          status: "failed",
-        });
+        db.prepare(`
+  INSERT INTO send_logs (customer_id, template_id, status, sent_at)
+  VALUES (?, ?, ?, ?)
+`).run(customer.id, template.id, "sent", new Date().toISOString());
+// use "failed" in the catch block
 
         results.push({
           email: customer.email,
