@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const db = require("./db");
+const db = require("./database"); 
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");

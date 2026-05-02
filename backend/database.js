@@ -44,6 +44,19 @@ db.prepare(`
   )
 `).run();
 
+// ✅ FIX: Add missing columns to send_logs if they don't exist yet.
+// ALTER TABLE fails silently if the column is already present (try/catch per column).
+for (const migration of [
+  "ALTER TABLE send_logs ADD COLUMN template_id INTEGER",
+  "ALTER TABLE send_logs ADD COLUMN status TEXT",
+]) {
+  try {
+    db.prepare(migration).run();
+  } catch (_) {
+    // Column already exists — safe to ignore
+  }
+}
+
 // 👉 seed campaigns if empty
 const count = db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c;
 
