@@ -1,90 +1,76 @@
-const low = require("lowdb");
-const FileSync = require("lowdb/adapters/FileSync");
+const fs = require("fs");
 const path = require("path");
 
-const adapter = new FileSync(path.join(__dirname, "..", "mailbot.json"));
-const db = low(adapter);
+const filePath = path.join(__dirname, "..", "mailbot.json");
 
-const BUSINESS_ID = 1; // 🔥 CHANGE PER CLIENT
-
-db.defaults({
-  customers: [],
-  templates: [],
-  send_log: [],
-  _seq: { customers: 0, templates: 0, send_log: 0 },
-}).write();
-
-function nextId(table) {
-  const id = db.get(`_seq.${table}`).value() + 1;
-  db.set(`_seq.${table}`, id).write();
-  return id;
+function readData() {
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
-function now() {
-  return new Date().toISOString();
+function writeData(data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
-// Customers
-db.getCustomers = () =>
-  db.get("customers").filter({ business_id: BUSINESS_ID }).value();
+// CUSTOMERS
+function getCustomers() {
+  return readData().customers;
+}
 
-db.getCustomerById = (id) =>
-  db.get("customers").find({ id, business_id: BUSINESS_ID }).value();
+function addCustomer(customer) {
+  const data = readData();
+  customer.id = ++data._seq.customers;
+  data.customers.push(customer);
+  writeData(data);
+  return customer;
+}
 
-db.insertCustomer = ({ name, email, company, last_visit_date }) => {
-  if (db.get("customers").find({ email, business_id: BUSINESS_ID }).value())
-    throw new Error("UNIQUE: email already exists");
+function deleteCustomer(id) {
+  const data = readData();
+  data.customers = data.customers.filter(c => c.id !== id);
+  writeData(data);
+}
 
-  const c = {
-    id: nextId("customers"),
-    business_id: BUSINESS_ID,
-    name,
-    email,
-    company: company || "",
-    last_visit_date: last_visit_date || now(),
-    subscribed: true,
-    created_at: now(),
-  };
+// TEMPLATES
+function getTemplates() {
+  return readData().templates;
+}
 
-  db.get("customers").push(c).write();
-  return c;
+// ✅ THIS WAS MISSING
+function getTemplateById(id) {
+  const data = readData();
+  return data.templates.find(t => t.id === id);
+}
+
+function addTemplate(template) {
+  const data = readData();
+  template.id = ++data._seq.templates;
+  data.templates.push(template);
+  writeData(data);
+  return template;
+}
+
+function deleteTemplate(id) {
+  const data = readData();
+  data.templates = data.templates.filter(t => t.id !== id);
+  writeData(data);
+}
+
+// SEND LOG
+function logSend(entry) {
+  const data = readData();
+  entry.id = ++data._seq.send_log;
+  entry.sent_at = new Date().toISOString();
+  data.send_log.push(entry);
+  writeData(data);
+}
+
+module.exports = {
+  getCustomers,
+  addCustomer,
+  deleteCustomer,
+  getTemplates,
+  getTemplateById, // ✅ IMPORTANT
+  addTemplate,
+  deleteTemplate,
+  logSend
 };
-
-db.updateCustomer = (id, data) =>
-  db.get("customers")
-    .find({ id, business_id: BUSINESS_ID })
-    .assign(data)
-    .write();
-
-db.deleteCustomer = (id) =>
-  db.get("customers")
-    .remove({ id, business_id: BUSINESS_ID })
-    .write();
-
-// Templates (shared for now)
-db.getTemplates = () => db.get("templates").value();
-
-db.insertTemplate = ({ name, subject, body }) => {
-  const t = {
-    id: nextId("templates"),
-    name,
-    subject,
-    body,
-    created_at: now(),
-  };
-  db.get("templates").push(t).write();
-  return t;
-};
-
-// Logs (per business implicitly via customer_id)
-db.logSend = ({ customer_id, template_id, status }) =>
-  db.get("send_log").push({
-    id: nextId("send_log"),
-    customer_id,
-    template_id,
-    status,
-    opened: false,
-    sent_at: now(),
-  }).write();
-
-module.exports = db;
