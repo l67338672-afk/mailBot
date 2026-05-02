@@ -35,6 +35,17 @@ db.prepare(`
 `).run();
 
 // SEND LOGS (for broadcast tracking)
+// TEMPLATES
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    subject TEXT,
+    body TEXT,
+    created_at TEXT
+  )
+`).run();
+
 db.prepare(`
   CREATE TABLE IF NOT EXISTS send_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
