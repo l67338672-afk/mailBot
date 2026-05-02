@@ -1,10 +1,5 @@
-const db = require("./db");
-const sqlite = require("./database");
+const db = require("./database");
 const nodemailer = require("nodemailer");
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 function createTransporter() {
   if (!process.env.BREVO_USER || !process.env.BREVO_PASS) {
@@ -22,110 +17,85 @@ function createTransporter() {
   });
 }
 
-function daysSince(date) {
-  return (Date.now() - new Date(date)) / (1000 * 60 * 60 * 24);
-}
+function sendEmail(transporter, to, subject, text) {
+  if (!transporter) return;
 
-async function sendMail(transporter, customer, subject, text) {
-  if (!transporter) {
-    console.log("📩 PREVIEW:", subject, "→", customer.email);
-    return;
-  }
-
-  await transporter.sendMail({
+  return transporter.sendMail({
     from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
-    to: customer.email,
+    to,
     subject,
     text,
   });
-
-  console.log("✅ Sent:", subject, "→", customer.email);
 }
 
-async function runAutomation() {
-  console.log("⚡ Automation started...");
+function runAutomation() {
+  console.log("⚡ Automation running...");
 
   const transporter = createTransporter();
+  const customers = db.prepare("SELECT * FROM customers").all();
 
-  while (true) {
-    const customers = db.getCustomers();
+  const now = Date.now();
 
-    for (const c of customers) {
-      const days = daysSince(c.created_at);
+  customers.forEach((c) => {
+    const created = new Date(c.created_at).getTime();
+    const daysPassed = Math.floor((now - created) / (1000 * 60 * 60 * 24));
 
-      try {
-        // DAY 0 → Welcome
-        if (c.last_stage_sent === 0) {
-          await sendMail(
-            transporter,
-            c,
-            "Welcome 👋",
-            "Thanks for visiting us!"
-          );
+    // STAGE 0 → DAY 0 (Welcome)
+    if (c.last_stage_sent === 0 && daysPassed >= 0) {
+      console.log("📩 Welcome →", c.email);
 
-          sqlite
-            .prepare(
-              "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
-            )
-            .run(1, c.id);
-        }
+      sendEmail(
+        transporter,
+        c.email,
+        "Welcome!",
+        `Hi ${c.name}, thanks for visiting us!`
+      );
 
-        // DAY 3 → Reminder
-        else if (c.last_stage_sent === 1 && days >= 3) {
-          await sendMail(
-            transporter,
-            c,
-            "We miss you!",
-            "Come back soon!"
-          );
-
-          sqlite
-            .prepare(
-              "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
-            )
-            .run(2, c.id);
-        }
-
-        // DAY 7 → Offer
-        else if (c.last_stage_sent === 2 && days >= 7) {
-          await sendMail(
-            transporter,
-            c,
-            "Special Offer 🎁",
-            "Flat 20% off for you!"
-          );
-
-          sqlite
-            .prepare(
-              "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
-            )
-            .run(3, c.id);
-        }
-
-        // DAY 30 → Comeback
-        else if (c.last_stage_sent === 3 && days >= 30) {
-          await sendMail(
-            transporter,
-            c,
-            "Comeback Offer",
-            "We’d love to see you again!"
-          );
-
-          sqlite
-            .prepare(
-              "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
-            )
-            .run(4, c.id);
-        }
-      } catch (err) {
-        console.log("❌ Automation error:", err.message);
-      }
-
-      await sleep(1500); // avoid spam
+      db.prepare("UPDATE customers SET last_stage_sent = 1 WHERE id = ?").run(c.id);
     }
 
-    await sleep(60000); // run every 1 min
-  }
+    // STAGE 1 → DAY 3
+    else if (c.last_stage_sent === 1 && daysPassed >= 3) {
+      console.log("📩 Reminder →", c.email);
+
+      sendEmail(
+        transporter,
+        c.email,
+        "We miss you 👀",
+        `Hey ${c.name}, it's been a few days!`
+      );
+
+      db.prepare("UPDATE customers SET last_stage_sent = 2 WHERE id = ?").run(c.id);
+    }
+
+    // STAGE 2 → DAY 7
+    else if (c.last_stage_sent === 2 && daysPassed >= 7) {
+      console.log("📩 Offer →", c.email);
+
+      sendEmail(
+        transporter,
+        c.email,
+        "Special Offer 🎁",
+        `Hi ${c.name}, here's a special offer for you!`
+      );
+
+      db.prepare("UPDATE customers SET last_stage_sent = 3 WHERE id = ?").run(c.id);
+    }
+
+    // STAGE 3 → DAY 30
+    else if (c.last_stage_sent === 3 && daysPassed >= 30) {
+      console.log("📩 Comeback →", c.email);
+
+      sendEmail(
+        transporter,
+        c.email,
+        "Come back!",
+        `We haven't seen you in a while ${c.name}!`
+      );
+
+      db.prepare("UPDATE customers SET last_stage_sent = 4 WHERE id = ?").run(c.id);
+    }
+  });
 }
 
 module.exports = runAutomation;
