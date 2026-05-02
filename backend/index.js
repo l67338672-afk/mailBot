@@ -32,22 +32,22 @@ const PORT = process.env.PORT || 10000;
 const runAutomation = require("./automation");
 
 // first run after startup
-setTimeout(() => {
-  try {
-    runAutomation();
-  } catch (e) {
-    console.error("Automation error:", e.message);
-  }
-}, 2000);
+// setTimeout(() => {
+//   try {
+//     runAutomation();
+//   } catch (e) {
+//     console.error(e.message);
+//   }
+// }, 2000);
 
 // repeat every 1 minute
-setInterval(() => {
-  try {
-    runAutomation();
-  } catch (e) {
-    console.error("Automation error:", e.message);
-  }
-}, 60000);
+// setInterval(() => {
+//   try {
+//     runAutomation();
+//   } catch (e) {
+//     console.error(e.message);
+//   }
+// }, 60000);
 
 app.listen(PORT, () => {
   console.log(`Server running → http://localhost:${PORT}`);
