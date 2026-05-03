@@ -5,7 +5,7 @@ function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
-async function sendEmail(to, subject, body) {
+async function sendEmail({ to, subject, body, fromName, fromEmail }) {
   const apiKey = process.env.BREVO_API_KEY;
 
   if (!apiKey) {
@@ -18,8 +18,8 @@ async function sendEmail(to, subject, body) {
       "https://api.brevo.com/v3/smtp/email",
       {
         sender: {
-          email: process.env.FROM_EMAIL,
-          name: process.env.FROM_NAME,
+          name:  fromName  || process.env.FROM_NAME  || "MailBot",
+          email: fromEmail || process.env.FROM_EMAIL,
         },
         to: [{ email: to }],
         subject,
@@ -54,27 +54,17 @@ async function runAutomation() {
     return;
   }
 
-  if (!customers.length) {
-    console.log("ℹ️ No customers found.");
-    return;
-  }
-
-  if (!campaigns.length) {
-    console.log("ℹ️ No campaigns found.");
-    return;
-  }
+  if (!customers.length) { console.log("ℹ️ No customers found."); return; }
+  if (!campaigns.length) { console.log("ℹ️ No campaigns found."); return; }
 
   const now = Date.now();
 
-  // Prepare statements once — reused across all customers/campaigns
   const alreadySentStmt = db.prepare(
     "SELECT 1 FROM sent_emails WHERE customer_id = ? AND campaign_id = ? LIMIT 1"
   );
-
   const insertSentStmt = db.prepare(
     "INSERT INTO sent_emails (customer_id, campaign_id) VALUES (?, ?)"
   );
-
   const updateStageStmt = db.prepare(
     "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
   );
@@ -85,20 +75,27 @@ async function runAutomation() {
     try {
       const created = new Date(customer.created_at).getTime();
       if (isNaN(created)) throw new Error("Invalid created_at date");
-      // ✅ Correct day calculation: floor of elapsed ms / ms-per-day
       daysPassed = Math.floor((now - created) / (1000 * 60 * 60 * 24));
     } catch (err) {
       console.error(`❌ Bad created_at for customer ${customer.id}:`, err.message);
       continue;
     }
 
+    const vars = {
+      name:          customer.name          || "",
+      email:         customer.email         || "",
+      company:       customer.company       || "",
+      business_name: customer.business_name || customer.company || process.env.FROM_NAME || "Us",
+    };
+
+    const fromName  = customer.business_name  || customer.company || process.env.FROM_NAME  || "MailBot";
+    const fromEmail = customer.business_email || process.env.FROM_EMAIL;
+
     for (let i = 0; i < campaigns.length; i++) {
       const campaign = campaigns[i];
 
-      // ✅ Day gate: only send if enough days have passed since signup
       if (daysPassed < campaign.day_offset) continue;
 
-      // ✅ Dedup gate: skip if already sent — survives redeploys
       try {
         const alreadySent = alreadySentStmt.get(customer.id, campaign.id);
         if (alreadySent) {
@@ -107,34 +104,26 @@ async function runAutomation() {
         }
       } catch (err) {
         console.error(
-          `❌ Dedup check failed for customer ${customer.id} / campaign ${campaign.id}:`,
+          `❌ Dedup check failed — customer ${customer.id} / campaign ${campaign.id}:`,
           err.message
         );
         continue;
       }
 
-      const vars = {
-        name:    customer.name    || "",
-        email:   customer.email   || "",
-        company: customer.company || "",
-      };
-
       const subject = interpolate(campaign.subject, vars);
-      const body    = interpolate(campaign.body, vars);
+      const body    = interpolate(campaign.body,    vars);
 
-      console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email}`);
+      console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email} (from: ${fromName})`);
 
-      const result = await sendEmail(customer.email, subject, body);
+      const result = await sendEmail({ to: customer.email, subject, body, fromName, fromEmail });
 
       if (result.success) {
         try {
-          // ✅ Primary protection: record in sent_emails — survives redeploys
           insertSentStmt.run(customer.id, campaign.id);
-          // Secondary: also update last_stage_sent (kept for compatibility)
           updateStageStmt.run(i + 1, customer.id);
         } catch (err) {
           console.error(
-            `❌ DB write failed after send (customer ${customer.id} / campaign ${campaign.id}):`,
+            `❌ DB write failed after send — customer ${customer.id} / campaign ${campaign.id}:`,
             err.message
           );
         }

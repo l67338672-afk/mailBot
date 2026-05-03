@@ -6,8 +6,6 @@ const db = require("./database");
 router.get("/", (req, res) => {
   try {
     const customers = db.prepare("SELECT * FROM customers").all();
-    // FIX: wrap in { success, data } so the frontend api() helper
-    // doesn't throw on !data.success, and destructuring { data } works.
     res.json({ success: true, data: customers });
   } catch (err) {
     console.error("Customer fetch error:", err);
@@ -18,21 +16,23 @@ router.get("/", (req, res) => {
 // ---------------- ADD CUSTOMER ----------------
 router.post("/", (req, res) => {
   try {
-    const { name, email, company } = req.body;
+    const { name, email, company, business_name, business_email } = req.body;
 
-    console.log("🔥 ADD REQUEST:", name, email, company);
+    console.log("🔥 ADD REQUEST:", name, email, company, business_name, business_email);
 
     if (!name || !email) {
       return res.status(400).json({ error: "Missing name or email" });
     }
 
     const result = db.prepare(`
-      INSERT INTO customers (name, email, company, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO customers (name, email, company, business_name, business_email, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       name,
       email,
-      company || "",
+      company        || "",
+      business_name  || company || "",
+      business_email || "",
       new Date().toISOString()
     );
 

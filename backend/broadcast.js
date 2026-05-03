@@ -6,6 +6,10 @@ function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
+const logStmt = () => db.prepare(
+  "INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)"
+);
+
 router.post("/", async (req, res) => {
   try {
     const { templateId, customerIds } = req.body;
@@ -14,7 +18,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, error: "templateId required" });
     }
 
-    console.log("📨 templateId received:", templateId, "| type:", typeof templateId);
+    console.log("📨 templateId received:", templateId);
 
     const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(Number(templateId));
 
@@ -37,7 +41,7 @@ router.post("/", async (req, res) => {
 
     const API_KEY = process.env.BREVO_API_KEY;
 
-    // Preview mode
+    // Preview mode — no API key configured
     if (!API_KEY) {
       console.log("⚠️ No BREVO_API_KEY — preview mode. Template:", template.name);
       return res.json({
@@ -49,21 +53,25 @@ router.post("/", async (req, res) => {
     }
 
     const results = [];
-    const logStmt = db.prepare(
-      "INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)"
-    );
+    const insert  = logStmt();
 
     for (const customer of targets) {
+      // Build interpolation vars — includes business_name per customer
       const vars = {
-        name:    customer.name,
-        email:   customer.email,
-        company: customer.company || "",
+        name:          customer.name          || "",
+        email:         customer.email         || "",
+        company:       customer.company       || "",
+        business_name: customer.business_name || customer.company || process.env.FROM_NAME || "Us",
       };
 
-      const subject = interpolate(template.subject, vars);
-      const body    = interpolate(template.body, vars);
+      // Dynamic sender: each customer's own business identity
+      const fromName  = customer.business_name  || customer.company || process.env.FROM_NAME  || "MailBot";
+      const fromEmail = customer.business_email || process.env.FROM_EMAIL;
 
-      console.log(`📤 Sending [${template.name}] → ${customer.email} | Subject: ${subject}`);
+      const subject = interpolate(template.subject, vars);
+      const body    = interpolate(template.body,    vars);
+
+      console.log(`📤 [${template.name}] → ${customer.email} | from: ${fromName} | subject: ${subject}`);
 
       try {
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -73,11 +81,8 @@ router.post("/", async (req, res) => {
             "api-key": API_KEY,
           },
           body: JSON.stringify({
-            sender: {
-              name:  process.env.FROM_NAME  || "MailBot",
-              email: process.env.FROM_EMAIL,
-            },
-            to: [{ email: customer.email }],
+            sender: { name: fromName, email: fromEmail },
+            to:     [{ email: customer.email }],
             subject,
             textContent: body,
           }),
@@ -86,13 +91,13 @@ router.post("/", async (req, res) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
 
-        console.log("✅ Sent to:", customer.email);
-        logStmt.run(customer.id, template.id, "sent",   new Date().toISOString());
+        console.log("✅ Sent:", customer.email);
+        insert.run(customer.id, template.id, "sent",   new Date().toISOString());
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
-        logStmt.run(customer.id, template.id, "failed", new Date().toISOString());
+        insert.run(customer.id, template.id, "failed", new Date().toISOString());
         results.push({ email: customer.email, status: "failed", error: err.message });
       }
     }
