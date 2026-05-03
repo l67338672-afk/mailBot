@@ -3,11 +3,12 @@ const router  = express.Router();
 const db      = require("./database");
 
 // GET /api/customers
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const customers = db.prepare(
-      "SELECT * FROM customers WHERE business_id = ? ORDER BY created_at DESC"
-    ).all(req.business.id);
+    const customers = await db.query(
+      "SELECT * FROM customers WHERE business_id = ? ORDER BY created_at DESC",
+      [req.business.id]
+    );
     res.json({ success: true, data: customers });
   } catch (err) {
     console.error("Customer fetch error:", err);
@@ -16,17 +17,17 @@ router.get("/", (req, res) => {
 });
 
 // POST /api/customers
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { name, email, company, business_name, business_email } = req.body;
     if (!name || !email) {
       return res.status(400).json({ success: false, error: "Missing name or email" });
     }
 
-    const result = db.prepare(`
+    const result = await db.execute(`
       INSERT INTO customers (business_id, name, email, company, business_name, business_email, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       req.business.id,
       name,
       email,
@@ -34,7 +35,7 @@ router.post("/", (req, res) => {
       business_name  || company || "",
       business_email || "",
       new Date().toISOString()
-    );
+    ]);
 
     console.log(`✅ Customer added [biz ${req.business.id}]:`, email, "→ id", result.lastInsertRowid);
     res.json({ success: true });
@@ -45,11 +46,12 @@ router.post("/", (req, res) => {
 });
 
 // DELETE /api/customers/:id
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const result = db.prepare(
-      "DELETE FROM customers WHERE id = ? AND business_id = ?"
-    ).run(req.params.id, req.business.id);
+    const result = await db.execute(
+      "DELETE FROM customers WHERE id = ? AND business_id = ?",
+      [req.params.id, req.business.id]
+    );
 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, error: "Customer not found" });

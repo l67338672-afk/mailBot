@@ -1,5 +1,5 @@
 const db   = require("./database");
-const axios = require("axios");
+
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
@@ -23,9 +23,13 @@ async function sendEmail({ to, subject, textBody, fromName, fromEmail }) {
   const msgId = `<${Date.now()}-${to.replace(/[^a-zA-Z0-9]/g, "")}>`;
 
   try {
-    await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { 
+        "api-key": apiKey, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({
         sender:      { name: fromName || "MailBot", email: fromEmail || process.env.FROM_EMAIL },
         to:          [{ email: to }],
         replyTo:     { email: fromEmail || process.env.FROM_EMAIL },
@@ -33,14 +37,18 @@ async function sendEmail({ to, subject, textBody, fromName, fromEmail }) {
         textContent: textBody,
         htmlContent: toHtml(textBody),
         headers:     { "Message-ID": msgId, "X-Mailer": "MailBot/1.0" },
-      },
-      { headers: { "api-key": apiKey, "Content-Type": "application/json" } }
-    );
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP error ${response.status}`);
+    }
 
     console.log("✅ Sent →", to);
     return { success: true };
   } catch (err) {
-    console.error("❌ Failed →", to, "|", err.response?.data || err.message);
+    console.error("❌ Failed →", to, "|", err.message);
     return { success: false };
   }
 }
@@ -50,7 +58,7 @@ async function runAutomation() {
 
   let businesses;
   try {
-    businesses = db.prepare("SELECT * FROM businesses").all();
+    businesses = await db.query("SELECT * FROM businesses");
   } catch (err) {
     console.error("❌ Could not load businesses:", err.message);
     return;
@@ -70,8 +78,8 @@ async function runForBusiness(business) {
 
   let customers, campaigns;
   try {
-    customers = db.prepare("SELECT * FROM customers WHERE business_id = ?").all(bizId);
-    campaigns = db.prepare("SELECT * FROM campaigns WHERE business_id = ? ORDER BY day_offset ASC").all(bizId);
+    customers = await db.query("SELECT * FROM customers WHERE business_id = ?", [bizId]);
+    campaigns = await db.query("SELECT * FROM campaigns WHERE business_id = ? ORDER BY day_offset ASC", [bizId]);
   } catch (err) {
     console.error(`❌ DB read failed for business ${bizId}:`, err.message);
     return;
@@ -80,16 +88,6 @@ async function runForBusiness(business) {
   if (!customers.length || !campaigns.length) return;
 
   const now = Date.now();
-
-  const alreadySentStmt = db.prepare(
-    "SELECT 1 FROM sent_emails WHERE business_id = ? AND customer_id = ? AND campaign_id = ? LIMIT 1"
-  );
-  const insertSentStmt = db.prepare(
-    "INSERT INTO sent_emails (business_id, customer_id, campaign_id) VALUES (?, ?, ?)"
-  );
-  const updateStageStmt = db.prepare(
-    "UPDATE customers SET last_stage_sent = ? WHERE id = ? AND business_id = ?"
-  );
 
   for (const customer of customers) {
     let daysPassed;
@@ -118,7 +116,10 @@ async function runForBusiness(business) {
       if (daysPassed < campaign.day_offset) continue;
 
       try {
-        const alreadySent = alreadySentStmt.get(bizId, customer.id, campaign.id);
+        const alreadySent = await db.getOne(
+          "SELECT 1 FROM sent_emails WHERE business_id = ? AND customer_id = ? AND campaign_id = ? LIMIT 1",
+          [bizId, customer.id, campaign.id]
+        );
         if (alreadySent) {
           console.log(`⏭️  Already sent Day ${campaign.day_offset} → ${customer.email}`);
           continue;
@@ -137,8 +138,14 @@ async function runForBusiness(business) {
 
       if (result.success) {
         try {
-          insertSentStmt.run(bizId, customer.id, campaign.id);
-          updateStageStmt.run(i + 1, customer.id, bizId);
+          await db.execute(
+            "INSERT INTO sent_emails (business_id, customer_id, campaign_id) VALUES (?, ?, ?)",
+            [bizId, customer.id, campaign.id]
+          );
+          await db.execute(
+            "UPDATE customers SET last_stage_sent = ? WHERE id = ? AND business_id = ?",
+            [i + 1, customer.id, bizId]
+          );
         } catch (err) {
           console.error(`❌ DB write failed — biz ${bizId} / customer ${customer.id} / campaign ${campaign.id}:`, err.message);
         }

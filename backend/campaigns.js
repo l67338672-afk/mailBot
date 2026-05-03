@@ -3,11 +3,12 @@ const router  = express.Router();
 const db      = require("./database");
 
 // GET /api/campaigns
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const campaigns = db.prepare(
-      "SELECT * FROM campaigns WHERE business_id = ? ORDER BY day_offset ASC"
-    ).all(req.business.id);
+    const campaigns = await db.query(
+      "SELECT * FROM campaigns WHERE business_id = ? ORDER BY day_offset ASC",
+      [req.business.id]
+    );
     res.json(campaigns);
   } catch (err) {
     console.error("Campaign fetch error:", err);
@@ -16,17 +17,17 @@ router.get("/", (req, res) => {
 });
 
 // POST /api/campaigns
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { name, day_offset, subject, body } = req.body;
     if (!name || day_offset == null || !subject || !body) {
       return res.status(400).json({ success: false, error: "Missing fields" });
     }
 
-    db.prepare(`
+    await db.execute(`
       INSERT INTO campaigns (business_id, name, day_offset, subject, body)
       VALUES (?, ?, ?, ?, ?)
-    `).run(req.business.id, name, Number(day_offset), subject, body);
+    `, [req.business.id, name, Number(day_offset), subject, body]);
 
     res.json({ success: true });
   } catch (err) {
@@ -36,11 +37,12 @@ router.post("/", (req, res) => {
 });
 
 // DELETE /api/campaigns/:id
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const result = db.prepare(
-      "DELETE FROM campaigns WHERE id = ? AND business_id = ?"
-    ).run(req.params.id, req.business.id);
+    const result = await db.execute(
+      "DELETE FROM campaigns WHERE id = ? AND business_id = ?",
+      [req.params.id, req.business.id]
+    );
 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, error: "Campaign not found" });

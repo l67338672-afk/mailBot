@@ -3,11 +3,12 @@ const router  = express.Router();
 const db      = require("./database");
 
 // GET /api/templates
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const data = db.prepare(
-      "SELECT * FROM templates WHERE business_id = ? ORDER BY id ASC"
-    ).all(req.business.id);
+    const data = await db.query(
+      "SELECT * FROM templates WHERE business_id = ? ORDER BY id ASC",
+      [req.business.id]
+    );
     res.json({ success: true, data });
   } catch (err) {
     console.error("Template fetch error:", err);
@@ -16,17 +17,17 @@ router.get("/", (req, res) => {
 });
 
 // POST /api/templates
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { name, subject, body } = req.body;
     if (!name || !subject || !body) {
       return res.status(400).json({ success: false, error: "name, subject, and body are required" });
     }
 
-    const result = db.prepare(`
+    const result = await db.execute(`
       INSERT INTO templates (business_id, name, subject, body, created_at)
       VALUES (?, ?, ?, ?, ?)
-    `).run(req.business.id, name, subject, body, new Date().toISOString());
+    `, [req.business.id, name, subject, body, new Date().toISOString()]);
 
     res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name, subject, body } });
   } catch (err) {
@@ -36,11 +37,12 @@ router.post("/", (req, res) => {
 });
 
 // DELETE /api/templates/:id
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const result = db.prepare(
-      "DELETE FROM templates WHERE id = ? AND business_id = ?"
-    ).run(parseInt(req.params.id), req.business.id);
+    const result = await db.execute(
+      "DELETE FROM templates WHERE id = ? AND business_id = ?",
+      [parseInt(req.params.id), req.business.id]
+    );
 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, error: "Template not found" });

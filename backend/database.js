@@ -1,108 +1,137 @@
-const fs       = require("fs");
-const path     = require("path");
-const Database = require("better-sqlite3");
+const sqlite3 = require("sqlite3").verbose();
+const path    = require("path");
+const fs      = require("fs");
 
-const DB_DIR  = process.env.DB_DIR || "/data";
+const DB_DIR  = process.env.DB_DIR || path.join(__dirname, "..");
 const DB_PATH = path.join(DB_DIR, "mailbot.db");
 
-try {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-    console.log(`📁 Created DB directory: ${DB_DIR}`);
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+const db = new sqlite3.Database(DB_PATH, (err) => {
+  if (err) {
+    console.error("❌ Database connection error:", err.message);
+  } else {
+    console.log("🗄️  Connected to SQLite database at:", DB_PATH);
   }
-} catch (err) {
-  console.error(`❌ Could not create DB directory (${DB_DIR}):`, err.message);
-}
+});
 
-const db = new Database(fs.existsSync(DB_DIR) ? DB_PATH : "mailbot.db");
-console.log("🗄️  Database path:", db.name);
+// Helper for Promisified queries to keep the async/await logic in routes
+db.query = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+};
 
-// ── BUSINESSES ───────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS businesses (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL,
-    email      TEXT    NOT NULL UNIQUE,
-    password   TEXT    NOT NULL,
-    created_at TEXT    NOT NULL
-  )
-`).run();
+db.getOne = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+};
 
-// ── CUSTOMERS ────────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS customers (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id     INTEGER NOT NULL DEFAULT 0,
-    name            TEXT,
-    email           TEXT,
-    company         TEXT,
-    business_name   TEXT,
-    business_email  TEXT,
-    created_at      TEXT,
-    last_stage_sent INTEGER DEFAULT 0
-  )
-`).run();
+db.execute = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ lastInsertRowid: this.lastID, changes: this.changes });
+    });
+  });
+};
 
-// ── CAMPAIGNS ────────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS campaigns (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id INTEGER NOT NULL DEFAULT 0,
-    name        TEXT,
-    day_offset  INTEGER,
-    subject     TEXT,
-    body        TEXT
-  )
-`).run();
+// ── INITIALIZE TABLES ────────────────────────────────────────────────────────
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS businesses (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL,
+      email      TEXT    NOT NULL UNIQUE,
+      password   TEXT    NOT NULL,
+      created_at TEXT    NOT NULL
+    )
+  `);
 
-// ── TEMPLATES ────────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS templates (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id INTEGER NOT NULL DEFAULT 0,
-    name        TEXT,
-    subject     TEXT,
-    body        TEXT,
-    created_at  TEXT
-  )
-`).run();
+  db.run(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id     INTEGER NOT NULL DEFAULT 0,
+      name            TEXT,
+      email           TEXT,
+      company         TEXT,
+      business_name   TEXT,
+      business_email  TEXT,
+      created_at      TEXT,
+      last_stage_sent INTEGER DEFAULT 0
+    )
+  `);
 
-// ── SENT EMAILS ──────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS sent_emails (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id INTEGER NOT NULL DEFAULT 0,
-    customer_id INTEGER,
-    campaign_id INTEGER
-  )
-`).run();
+  db.run(`
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL DEFAULT 0,
+      name        TEXT,
+      day_offset  INTEGER,
+      subject     TEXT,
+      body        TEXT
+    )
+  `);
 
-// ── SEND LOGS ────────────────────────────────────────────────────────────────
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS send_logs (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_id INTEGER NOT NULL DEFAULT 0,
-    customer_id INTEGER,
-    template_id INTEGER,
-    status      TEXT,
-    sent_at     TEXT
-  )
-`).run();
+  db.run(`
+    CREATE TABLE IF NOT EXISTS templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL DEFAULT 0,
+      name        TEXT,
+      subject     TEXT,
+      body        TEXT,
+      created_at  TEXT
+    )
+  `);
 
-// ── SAFE MIGRATIONS ──────────────────────────────────────────────────────────
-for (const sql of [
-  "ALTER TABLE customers   ADD COLUMN business_id    INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE customers   ADD COLUMN business_name  TEXT",
-  "ALTER TABLE customers   ADD COLUMN business_email TEXT",
-  "ALTER TABLE campaigns   ADD COLUMN business_id    INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE templates   ADD COLUMN business_id    INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE sent_emails ADD COLUMN business_id    INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE send_logs   ADD COLUMN business_id    INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE send_logs   ADD COLUMN template_id    INTEGER",
-  "ALTER TABLE send_logs   ADD COLUMN status         TEXT",
-  "ALTER TABLE send_logs   ADD COLUMN sent_at        TEXT",
-]) {
-  try { db.prepare(sql).run(); } catch (_) {}
-}
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sent_emails (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL DEFAULT 0,
+      customer_id INTEGER,
+      campaign_id INTEGER
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS send_logs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL DEFAULT 0,
+      customer_id INTEGER,
+      template_id INTEGER,
+      status      TEXT,
+      sent_at     TEXT
+    )
+  `);
+
+  // Safe Migrations
+  const columns = [
+    ["customers", "business_id", "INTEGER NOT NULL DEFAULT 0"],
+    ["customers", "business_name", "TEXT"],
+    ["customers", "business_email", "TEXT"],
+    ["campaigns", "business_id", "INTEGER NOT NULL DEFAULT 0"],
+    ["templates", "business_id", "INTEGER NOT NULL DEFAULT 0"],
+    ["sent_emails", "business_id", "INTEGER NOT NULL DEFAULT 0"],
+    ["send_logs", "business_id", "INTEGER NOT NULL DEFAULT 0"],
+    ["send_logs", "template_id", "INTEGER"],
+    ["send_logs", "status", "TEXT"],
+    ["send_logs", "sent_at", "TEXT"]
+  ];
+
+  columns.forEach(([table, col, type]) => {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`, (err) => {
+      // Ignore error if column already exists
+    });
+  });
+});
 
 module.exports = db;

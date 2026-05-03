@@ -25,9 +25,10 @@ router.post("/", async (req, res) => {
 
     console.log(`📨 Broadcast [biz ${bizId}] — templateId: ${templateId}`);
 
-    const template = db.prepare(
-      "SELECT * FROM templates WHERE id = ? AND business_id = ?"
-    ).get(Number(templateId), bizId);
+    const template = await db.getOne(
+      "SELECT * FROM templates WHERE id = ? AND business_id = ?",
+      [Number(templateId), bizId]
+    );
 
     console.log("📋 Template:", template ? `[${template.id}] ${template.name}` : "NOT FOUND");
 
@@ -35,9 +36,10 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ success: false, error: "Template not found" });
     }
 
-    const allCustomers = db.prepare(
-      "SELECT * FROM customers WHERE business_id = ?"
-    ).all(bizId);
+    const allCustomers = await db.query(
+      "SELECT * FROM customers WHERE business_id = ?",
+      [bizId]
+    );
 
     const targets =
       Array.isArray(customerIds) && customerIds.length > 0
@@ -60,10 +62,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const results   = [];
-    const insertLog = db.prepare(
-      "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)"
-    );
+    const results = [];
 
     for (const customer of targets) {
       const vars = {
@@ -102,12 +101,18 @@ router.post("/", async (req, res) => {
         if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
 
         console.log("✅ Sent:", customer.email);
-        insertLog.run(bizId, customer.id, template.id, "sent",   new Date().toISOString());
+        await db.execute(
+          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)",
+          [bizId, customer.id, template.id, "sent", new Date().toISOString()]
+        );
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
-        insertLog.run(bizId, customer.id, template.id, "failed", new Date().toISOString());
+        await db.execute(
+          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)",
+          [bizId, customer.id, template.id, "failed", new Date().toISOString()]
+        );
         results.push({ email: customer.email, status: "failed", error: err.message });
       }
     }
