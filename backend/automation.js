@@ -66,6 +66,7 @@ async function runAutomation() {
 
   const now = Date.now();
 
+  // Prepare statements once — reused across all customers/campaigns
   const alreadySentStmt = db.prepare(
     "SELECT 1 FROM sent_emails WHERE customer_id = ? AND campaign_id = ? LIMIT 1"
   );
@@ -83,6 +84,8 @@ async function runAutomation() {
 
     try {
       const created = new Date(customer.created_at).getTime();
+      if (isNaN(created)) throw new Error("Invalid created_at date");
+      // ✅ Correct day calculation: floor of elapsed ms / ms-per-day
       daysPassed = Math.floor((now - created) / (1000 * 60 * 60 * 24));
     } catch (err) {
       console.error(`❌ Bad created_at for customer ${customer.id}:`, err.message);
@@ -92,8 +95,10 @@ async function runAutomation() {
     for (let i = 0; i < campaigns.length; i++) {
       const campaign = campaigns[i];
 
+      // ✅ Day gate: only send if enough days have passed since signup
       if (daysPassed < campaign.day_offset) continue;
 
+      // ✅ Dedup gate: skip if already sent — survives redeploys
       try {
         const alreadySent = alreadySentStmt.get(customer.id, campaign.id);
         if (alreadySent) {
@@ -101,7 +106,10 @@ async function runAutomation() {
           continue;
         }
       } catch (err) {
-        console.error(`❌ Dedup check failed for customer ${customer.id} / campaign ${campaign.id}:`, err.message);
+        console.error(
+          `❌ Dedup check failed for customer ${customer.id} / campaign ${campaign.id}:`,
+          err.message
+        );
         continue;
       }
 
@@ -112,7 +120,7 @@ async function runAutomation() {
       };
 
       const subject = interpolate(campaign.subject, vars);
-      const body    = interpolate(campaign.body,    vars);
+      const body    = interpolate(campaign.body, vars);
 
       console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email}`);
 
@@ -120,10 +128,15 @@ async function runAutomation() {
 
       if (result.success) {
         try {
+          // ✅ Primary protection: record in sent_emails — survives redeploys
           insertSentStmt.run(customer.id, campaign.id);
+          // Secondary: also update last_stage_sent (kept for compatibility)
           updateStageStmt.run(i + 1, customer.id);
         } catch (err) {
-          console.error(`❌ DB write failed after send (customer ${customer.id} / campaign ${campaign.id}):`, err.message);
+          console.error(
+            `❌ DB write failed after send (customer ${customer.id} / campaign ${campaign.id}):`,
+            err.message
+          );
         }
       }
     }

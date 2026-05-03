@@ -362,7 +362,7 @@
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-if (data.success === false) throw new Error(data.error || "Request failed");
+    if (data.success === false) throw new Error(data.error || "Request failed");
     return data;
   }
 
@@ -407,7 +407,6 @@ if (data.success === false) throw new Error(data.error || "Request failed");
   }
 
   function toggleCustomer(id, e) {
-    // If the click originated from the delete button, skip
     if (e && e.target.tagName === "BUTTON") return;
     const cb = document.getElementById(`c-${id}`);
     cb.checked = !cb.checked;
@@ -468,6 +467,7 @@ if (data.success === false) throw new Error(data.error || "Request failed");
     }
   }
 
+  // ✅ NO delete button — display only
   function renderTemplates() {
     const list = document.getElementById("template-list");
     if (templates.length === 0) { list.innerHTML = ""; return; }
@@ -477,7 +477,6 @@ if (data.success === false) throw new Error(data.error || "Request failed");
           <div class="item-name">${esc(t.name)}</div>
           <div class="item-sub">Subject: ${esc(t.subject)}</div>
         </div>
-        <button class="btn btn-danger" onclick="deleteTemplate(${t.id})">✕</button>
       </div>
     `).join("");
   }
@@ -490,20 +489,12 @@ if (data.success === false) throw new Error(data.error || "Request failed");
     if (current) sel.value = current;
   }
 
-  async function deleteTemplate(id) {
-    try {
-      await api(`/api/templates/${id}`, { method: "DELETE" });
-      toast("Template removed", "info");
-      await loadTemplates();
-    } catch (e) {
-      toast("Error: " + e.message, "error");
-    }
-  }
-
   // ── Broadcast ─────────────────────────────────────────────────────────────
   async function sendBroadcast(all = false) {
     const templateId = document.getElementById("broadcast-template").value;
     if (!templateId) { toast("Please select a template first", "warn"); return; }
+
+    console.log("Selected templateId:", parseInt(templateId));
 
     let customerIds = null;
     if (!all) {
@@ -577,37 +568,44 @@ if (data.success === false) throw new Error(data.error || "Request failed");
       data.forEach(c => {
         const div = document.createElement("div");
         div.className = "list-item";
+        // ✅ NO delete button — display only
         div.innerHTML = `
           <div class="item-meta">
-            <div class="item-name">Day ${c.day_offset}</div>
-            <div class="item-sub">${esc ? esc(c.subject) : c.subject}</div>
+            <div class="item-name">Day ${c.day_offset} — ${esc(c.name)}</div>
+            <div class="item-sub">${esc(c.subject)}</div>
           </div>
-          <button class="btn btn-danger" onclick="deleteCampaign(${c.id})">✕</button>
         `;
         list.appendChild(div);
       });
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load campaigns:", e);
     }
   }
 
   async function addCampaign() {
-    const name    = document.getElementById("c-name")?.value;
+    const name    = document.getElementById("c-name")?.value.trim();
     const day     = Number(document.getElementById("c-day")?.value);
-    const subject = document.getElementById("c-subject")?.value;
-    const body    = document.getElementById("c-body")?.value;
-    if (!name || !subject || !body) return;
-    await fetch("/api/campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, day_offset: day, subject, body })
-    });
-    loadCampaigns();
-  }
-
-  async function deleteCampaign(id) {
-    await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
-    loadCampaigns();
+    const subject = document.getElementById("c-subject")?.value.trim();
+    const body    = document.getElementById("c-body")?.value.trim();
+    if (!name || !subject || !body) {
+      toast("All campaign fields are required", "warn");
+      return;
+    }
+    try {
+      await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, day_offset: day, subject, body })
+      });
+      document.getElementById("c-name").value = "";
+      document.getElementById("c-day").value = "";
+      document.getElementById("c-subject").value = "";
+      document.getElementById("c-body").value = "";
+      toast("Campaign added!", "success");
+      loadCampaigns();
+    } catch (e) {
+      toast("Error: " + e.message, "error");
+    }
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
