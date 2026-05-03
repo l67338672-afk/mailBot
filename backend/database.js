@@ -1,17 +1,39 @@
+const fs       = require("fs");
+const path     = require("path");
 const Database = require("better-sqlite3");
 
-const db = new Database("mailbot_v2.db");
+// Ensure persistent disk directory exists before opening DB.
+// On Render this maps to the mounted persistent disk at /data.
+// Locally it creates ./data so the app still runs in dev.
+const DB_DIR  = process.env.DB_DIR || "/data";
+const DB_PATH = path.join(DB_DIR, "mailbot.db");
+
+try {
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+    console.log(`📁 Created DB directory: ${DB_DIR}`);
+  }
+} catch (err) {
+  console.error(`❌ Could not create DB directory (${DB_DIR}):`, err.message);
+  console.error("   Falling back to local mailbot.db");
+}
+
+const db = new Database(
+  fs.existsSync(DB_DIR) ? DB_PATH : "mailbot.db"
+);
+
+console.log("🗄️  Database path:", db.name);
 
 // CUSTOMERS
 db.prepare(`
   CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT,
-    company TEXT,
-    business_name TEXT,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT,
+    email          TEXT,
+    company        TEXT,
+    business_name  TEXT,
     business_email TEXT,
-    created_at TEXT,
+    created_at     TEXT,
     last_stage_sent INTEGER DEFAULT 0
   )
 `).run();
@@ -19,18 +41,18 @@ db.prepare(`
 // CAMPAIGNS
 db.prepare(`
   CREATE TABLE IF NOT EXISTS campaigns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT,
     day_offset INTEGER,
-    subject TEXT,
-    body TEXT
+    subject    TEXT,
+    body       TEXT
   )
 `).run();
 
-// SENT EMAILS (dedup guard — survives redeploys)
+// SENT EMAILS (dedup guard — survives redeploys because /data is persistent)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS sent_emails (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_id INTEGER,
     campaign_id INTEGER
   )
@@ -39,10 +61,10 @@ db.prepare(`
 // TEMPLATES
 db.prepare(`
   CREATE TABLE IF NOT EXISTS templates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    subject TEXT,
-    body TEXT,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT,
+    subject    TEXT,
+    body       TEXT,
     created_at TEXT
   )
 `).run();
@@ -50,15 +72,15 @@ db.prepare(`
 // SEND LOGS
 db.prepare(`
   CREATE TABLE IF NOT EXISTS send_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_id INTEGER,
     template_id INTEGER,
-    status TEXT,
-    sent_at TEXT
+    status      TEXT,
+    sent_at     TEXT
   )
 `).run();
 
-// Safe column migrations — ignored if column already exists
+// Safe column migrations — ignored if already present
 for (const sql of [
   "ALTER TABLE send_logs ADD COLUMN template_id INTEGER",
   "ALTER TABLE send_logs ADD COLUMN status TEXT",
@@ -74,45 +96,44 @@ if (db.prepare("SELECT COUNT(*) as c FROM campaigns").get().c === 0) {
   const ins = db.prepare(
     "INSERT INTO campaigns (name, day_offset, subject, body) VALUES (?, ?, ?, ?)"
   );
+
   ins.run(
     "Welcome",
     0,
-    "{{business_name}} — Welcome! 👋",
+    "Welcome to {{business_name}}",
     `Hi {{name}},
 
-Thank you for visiting {{business_name}}! We're so glad to have you.
+Thank you for visiting {{business_name}}. We are glad to have you.
 
-We look forward to seeing you again soon. Feel free to book your next appointment anytime.
+Feel free to reach out anytime if you would like to book your next appointment.
 
-– {{business_name}} Team`
+- {{business_name}}`
   );
+
   ins.run(
-    "Reminder",
+    "Follow-up",
     3,
-    "{{business_name}} — We miss you! 🙂",
+    "Checking in from {{business_name}}",
     `Hi {{name}},
 
-It's been a few days since your last visit at {{business_name}}, and we just wanted to check in.
+Just checking in — it has been a few days since your visit to {{business_name}}.
 
-Whenever you're ready, we'd love to have you back. Give us a call or just drop in!
+We have some availability this week if you would like to come in again. Let me know and I will reserve a slot for you.
 
-– {{business_name}} Team`
+- {{business_name}}`
   );
+
   ins.run(
-    "Offer",
+    "Comeback",
     7,
-    "{{business_name}} — A special offer just for you 🎁",
+    "We have a slot for you at {{business_name}}",
     `Hi {{name}},
 
-We haven't seen you in a while at {{business_name}} and we miss you!
+It has been a while since your last visit to {{business_name}} and we wanted to reach out.
 
-Here's something special to welcome you back:
+If you are thinking about coming back, we can fit you in this week. Just reply to this email and we will take care of it.
 
-🎁 20% OFF your next visit — valid for 3 days only.
-
-Book your appointment today and we'll take care of the rest.
-
-– {{business_name}} Team`
+- {{business_name}}`
   );
 }
 
@@ -122,60 +143,56 @@ if (db.prepare("SELECT COUNT(*) as c FROM templates").get().c === 0) {
     "INSERT INTO templates (name, subject, body, created_at) VALUES (?, ?, ?, ?)"
   );
   const now = new Date().toISOString();
+
   ins.run(
     "Welcome",
-    "{{business_name}} — Welcome! 👋",
+    "Welcome to {{business_name}}",
     `Hi {{name}},
 
-Thank you for visiting {{business_name}}! We're so glad to have you.
+Thank you for visiting {{business_name}}. We are glad to have you as a client.
 
-We look forward to seeing you again soon. Feel free to book your next appointment anytime.
+We look forward to seeing you again. Book your next appointment whenever you are ready.
 
-– {{business_name}} Team`,
+- {{business_name}}`,
     now
   );
+
+  ins.run(
+    "Checking In",
+    "Checking in from {{business_name}}",
+    `Hi {{name}},
+
+Just wanted to check in — it has been a while since your last visit to {{business_name}}.
+
+If you would like to come back in, we have availability this week. Reply to this email and I will hold a slot for you.
+
+- {{business_name}}`,
+    now
+  );
+
   ins.run(
     "Comeback",
-    "{{business_name}} — We miss you! 🙂",
+    "We saved a slot for you at {{business_name}}",
     `Hi {{name}},
 
-It's been a while since your last visit at {{business_name}}.
+We noticed it has been some time since your visit to {{business_name}}, and we wanted to reach out personally.
 
-We were going through our client list and thought of you. Whenever you're ready, we'd love to have you back!
+If you are thinking about coming back, reply to this and we will get you booked in.
 
-– {{business_name}} Team`,
+- {{business_name}}`,
     now
   );
+
   ins.run(
-    "Special Offer",
-    "{{business_name}} — A special offer just for you 🎁",
+    "Limited Availability",
+    "Slots filling up at {{business_name}}",
     `Hi {{name}},
 
-We haven't seen you at {{business_name}} in a while, and we miss you!
+We are getting busy at {{business_name}} this week and wanted to give you first notice before slots fill up.
 
-Here's something special to welcome you back:
+If you would like to come in, let me know and I will reserve one for you right away.
 
-🎁 20% OFF your next visit — valid for 3 days only.
-
-Reply YES to book your slot and we'll take care of everything.
-
-– {{business_name}} Team`,
-    now
-  );
-  ins.run(
-    "Urgency",
-    "{{business_name}} — Don't miss this, {{name}} 👀",
-    `Hi {{name}},
-
-This is a quick note from {{business_name}}.
-
-We're running a limited-time offer this week and wanted you to be the first to know:
-
-👉 Flat 20% OFF — only valid for 72 hours.
-
-Slots are filling up fast. Reply YES to claim yours.
-
-– {{business_name}} Team`,
+- {{business_name}}`,
     now
   );
 }

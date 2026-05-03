@@ -1,17 +1,27 @@
-const db = require("./database");
+const db   = require("./database");
 const axios = require("axios");
 
 function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
-async function sendEmail({ to, subject, body, fromName, fromEmail }) {
+// Convert plain text body to minimal HTML (only <p> tags)
+function toHtml(text) {
+  return text
+    .split(/\n\n+/)
+    .map(para => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
+async function sendEmail({ to, subject, textBody, fromName, fromEmail }) {
   const apiKey = process.env.BREVO_API_KEY;
 
   if (!apiKey) {
-    console.log("⚠️ No BREVO_API_KEY → preview mode, skipping send");
+    console.log("⚠️  No BREVO_API_KEY — preview mode, skipping send");
     return { success: false, preview: true };
   }
+
+  const messageId = `<${Date.now()}-${to.replace(/[^a-zA-Z0-9]/g, "")}>`;
 
   try {
     await axios.post(
@@ -21,13 +31,19 @@ async function sendEmail({ to, subject, body, fromName, fromEmail }) {
           name:  fromName  || process.env.FROM_NAME  || "MailBot",
           email: fromEmail || process.env.FROM_EMAIL,
         },
-        to: [{ email: to }],
+        to:      [{ email: to }],
+        replyTo: { email: fromEmail || process.env.FROM_EMAIL },
         subject,
-        textContent: body,
+        textContent: textBody,
+        htmlContent: toHtml(textBody),
+        headers: {
+          "Message-ID": messageId,
+          "X-Mailer":   "MailBot/1.0",
+        },
       },
       {
         headers: {
-          "api-key": apiKey,
+          "api-key":      apiKey,
           "Content-Type": "application/json",
         },
       }
@@ -54,8 +70,8 @@ async function runAutomation() {
     return;
   }
 
-  if (!customers.length) { console.log("ℹ️ No customers found."); return; }
-  if (!campaigns.length) { console.log("ℹ️ No campaigns found."); return; }
+  if (!customers.length) { console.log("ℹ️  No customers found."); return; }
+  if (!campaigns.length) { console.log("ℹ️  No campaigns found."); return; }
 
   const now = Date.now();
 
@@ -85,7 +101,7 @@ async function runAutomation() {
       name:          customer.name          || "",
       email:         customer.email         || "",
       company:       customer.company       || "",
-      business_name: customer.business_name || customer.company || process.env.FROM_NAME || "Us",
+      business_name: customer.business_name || customer.company || process.env.FROM_NAME || "",
     };
 
     const fromName  = customer.business_name  || customer.company || process.env.FROM_NAME  || "MailBot";
@@ -94,12 +110,14 @@ async function runAutomation() {
     for (let i = 0; i < campaigns.length; i++) {
       const campaign = campaigns[i];
 
+      // Day gate: do not send future campaigns early
       if (daysPassed < campaign.day_offset) continue;
 
+      // Dedup gate: never send the same campaign to the same customer twice
       try {
         const alreadySent = alreadySentStmt.get(customer.id, campaign.id);
         if (alreadySent) {
-          console.log(`⏭️ Already sent Day ${campaign.day_offset} → ${customer.email}`);
+          console.log(`⏭️  Already sent Day ${campaign.day_offset} → ${customer.email}`);
           continue;
         }
       } catch (err) {
@@ -110,12 +128,12 @@ async function runAutomation() {
         continue;
       }
 
-      const subject = interpolate(campaign.subject, vars);
-      const body    = interpolate(campaign.body,    vars);
+      const subject  = interpolate(campaign.subject, vars);
+      const textBody = interpolate(campaign.body,    vars);
 
       console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email} (from: ${fromName})`);
 
-      const result = await sendEmail({ to: customer.email, subject, body, fromName, fromEmail });
+      const result = await sendEmail({ to: customer.email, subject, textBody, fromName, fromEmail });
 
       if (result.success) {
         try {
