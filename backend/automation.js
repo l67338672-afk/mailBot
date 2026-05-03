@@ -1,13 +1,16 @@
 const db = require("./database");
 const axios = require("axios");
 
-// ---------------- SEND EMAIL VIA BREVO API ----------------
+function interpolate(text, vars) {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
+}
+
 async function sendEmail(to, subject, body) {
   const apiKey = process.env.BREVO_API_KEY;
 
   if (!apiKey) {
-    console.log("⚠️ No API KEY → preview mode");
-    return;
+    console.log("⚠️ No BREVO_API_KEY → preview mode, skipping send");
+    return { success: false, preview: true };
   }
 
   try {
@@ -19,7 +22,7 @@ async function sendEmail(to, subject, body) {
           name: process.env.FROM_NAME,
         },
         to: [{ email: to }],
-        subject: subject,
+        subject,
         textContent: body,
       },
       {
@@ -30,66 +33,103 @@ async function sendEmail(to, subject, body) {
       }
     );
 
-    console.log("✅ Email sent →", to);
+    console.log("✅ Sent →", to);
+    return { success: true };
   } catch (err) {
-    console.error(
-      "❌ Email failed:",
-      err.response?.data || err.message
-    );
+    console.error("❌ Failed →", to, "|", err.response?.data || err.message);
+    return { success: false };
   }
 }
 
-// ---------------- TEMPLATE VARIABLE REPLACER ----------------
-function interpolate(text, vars) {
-  return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
-}
-
-// ---------------- MAIN AUTOMATION ----------------
 async function runAutomation() {
   console.log("⚡ Automation running...");
 
-  const customers = db.prepare("SELECT * FROM customers").all();
-  const campaigns = db
-    .prepare("SELECT * FROM campaigns ORDER BY day_offset ASC")
-    .all();
+  let customers, campaigns;
+
+  try {
+    customers = db.prepare("SELECT * FROM customers").all();
+    campaigns = db.prepare("SELECT * FROM campaigns ORDER BY day_offset ASC").all();
+  } catch (err) {
+    console.error("❌ DB read failed:", err.message);
+    return;
+  }
+
+  if (!customers.length) {
+    console.log("ℹ️ No customers found.");
+    return;
+  }
+
+  if (!campaigns.length) {
+    console.log("ℹ️ No campaigns found.");
+    return;
+  }
 
   const now = Date.now();
 
-  for (const c of customers) {
-    const created = new Date(c.created_at).getTime();
-    const daysPassed = Math.floor(
-      (now - created) / (1000 * 60 * 60 * 24)
-    );
+  const alreadySentStmt = db.prepare(
+    "SELECT 1 FROM sent_emails WHERE customer_id = ? AND campaign_id = ? LIMIT 1"
+  );
+
+  const insertSentStmt = db.prepare(
+    "INSERT INTO sent_emails (customer_id, campaign_id) VALUES (?, ?)"
+  );
+
+  const updateStageStmt = db.prepare(
+    "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
+  );
+
+  for (const customer of customers) {
+    let daysPassed;
+
+    try {
+      const created = new Date(customer.created_at).getTime();
+      daysPassed = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+    } catch (err) {
+      console.error(`❌ Bad created_at for customer ${customer.id}:`, err.message);
+      continue;
+    }
 
     for (let i = 0; i < campaigns.length; i++) {
       const campaign = campaigns[i];
 
-      if (
-        daysPassed >= campaign.day_offset &&
-        c.last_stage_sent < i + 1
-      ) {
-        console.log(`📩 Sending Day ${campaign.day_offset} →`, c.email);
+      if (daysPassed < campaign.day_offset) continue;
 
-        const subject = interpolate(campaign.subject, {
-          name: c.name,
-          email: c.email,
-        });
+      try {
+        const alreadySent = alreadySentStmt.get(customer.id, campaign.id);
+        if (alreadySent) {
+          console.log(`⏭️ Already sent Day ${campaign.day_offset} → ${customer.email}`);
+          continue;
+        }
+      } catch (err) {
+        console.error(`❌ Dedup check failed for customer ${customer.id} / campaign ${campaign.id}:`, err.message);
+        continue;
+      }
 
-        const body = interpolate(campaign.body, {
-          name: c.name,
-          email: c.email,
-        });
+      const vars = {
+        name:    customer.name    || "",
+        email:   customer.email   || "",
+        company: customer.company || "",
+      };
 
-        // 👉 SEND EMAIL
-        await sendEmail(c.email, subject, body);
+      const subject = interpolate(campaign.subject, vars);
+      const body    = interpolate(campaign.body,    vars);
 
-        // 👉 UPDATE DATABASE
-        db.prepare(
-          "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
-        ).run(i + 1, c.id);
+      console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email}`);
+
+      const result = await sendEmail(customer.email, subject, body);
+
+      if (result.success) {
+        try {
+          insertSentStmt.run(customer.id, campaign.id);
+          updateStageStmt.run(i + 1, customer.id);
+        } catch (err) {
+          console.error(`❌ DB write failed after send (customer ${customer.id} / campaign ${campaign.id}):`, err.message);
+        }
       }
     }
   }
+
+  console.log("✅ Automation cycle complete.");
 }
 
 module.exports = runAutomation;
