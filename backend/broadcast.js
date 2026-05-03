@@ -6,7 +6,6 @@ function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
-// Convert plain text body to minimal HTML (only <p> tags)
 function toHtml(text) {
   return text
     .split(/\n\n+/)
@@ -14,25 +13,31 @@ function toHtml(text) {
     .join("\n");
 }
 
+// POST /api/broadcast
 router.post("/", async (req, res) => {
   try {
     const { templateId, customerIds } = req.body;
+    const bizId = req.business.id;
 
     if (!templateId) {
       return res.status(400).json({ success: false, error: "templateId required" });
     }
 
-    console.log("📨 templateId received:", templateId);
+    console.log(`📨 Broadcast [biz ${bizId}] — templateId: ${templateId}`);
 
-    const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(Number(templateId));
+    const template = db.prepare(
+      "SELECT * FROM templates WHERE id = ? AND business_id = ?"
+    ).get(Number(templateId), bizId);
 
-    console.log("📋 Template resolved:", template ? `[${template.id}] ${template.name}` : "NOT FOUND");
+    console.log("📋 Template:", template ? `[${template.id}] ${template.name}` : "NOT FOUND");
 
     if (!template) {
       return res.status(404).json({ success: false, error: "Template not found" });
     }
 
-    const allCustomers = db.prepare("SELECT * FROM customers").all();
+    const allCustomers = db.prepare(
+      "SELECT * FROM customers WHERE business_id = ?"
+    ).all(bizId);
 
     const targets =
       Array.isArray(customerIds) && customerIds.length > 0
@@ -45,9 +50,8 @@ router.post("/", async (req, res) => {
 
     const API_KEY = process.env.BREVO_API_KEY;
 
-    // Preview mode — no API key configured
     if (!API_KEY) {
-      console.log("⚠️  No BREVO_API_KEY — preview mode. Template:", template.name);
+      console.log(`⚠️  No BREVO_API_KEY — preview mode [biz ${bizId}]`);
       return res.json({
         success: true,
         preview: true,
@@ -56,9 +60,9 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const results = [];
+    const results   = [];
     const insertLog = db.prepare(
-      "INSERT INTO send_logs (customer_id, template_id, status, sent_at) VALUES (?,?,?,?)"
+      "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)"
     );
 
     for (const customer of targets) {
@@ -66,27 +70,23 @@ router.post("/", async (req, res) => {
         name:          customer.name          || "",
         email:         customer.email         || "",
         company:       customer.company       || "",
-        business_name: customer.business_name || customer.company || process.env.FROM_NAME || "",
+        business_name: customer.business_name || customer.company || req.business.name || "",
       };
 
-      const fromName  = customer.business_name  || customer.company || process.env.FROM_NAME  || "MailBot";
-      const fromEmail = customer.business_email || process.env.FROM_EMAIL;
+      const fromName  = customer.business_name  || customer.company || req.business.name  || "MailBot";
+      const fromEmail = customer.business_email || req.business.email || process.env.FROM_EMAIL;
 
       const subject  = interpolate(template.subject, vars);
       const textBody = interpolate(template.body,    vars);
       const htmlBody = toHtml(textBody);
+      const msgId    = `<${Date.now()}-${customer.email.replace(/[^a-zA-Z0-9]/g, "")}>`;
 
-      const messageId = `<${Date.now()}-${customer.email.replace(/[^a-zA-Z0-9]/g, "")}>`;
-
-      console.log(`📤 [${template.name}] → ${customer.email} | from: ${fromName} | subject: ${subject}`);
+      console.log(`📤 [${template.name}] → ${customer.email} | from: ${fromName}`);
 
       try {
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key":      API_KEY,
-          },
+          headers: { "Content-Type": "application/json", "api-key": API_KEY },
           body: JSON.stringify({
             sender:      { name: fromName, email: fromEmail },
             to:          [{ email: customer.email }],
@@ -94,10 +94,7 @@ router.post("/", async (req, res) => {
             subject,
             textContent: textBody,
             htmlContent: htmlBody,
-            headers: {
-              "Message-ID": messageId,
-              "X-Mailer":   "MailBot/1.0",
-            },
+            headers:     { "Message-ID": msgId, "X-Mailer": "MailBot/1.0" },
           }),
         });
 
@@ -105,12 +102,12 @@ router.post("/", async (req, res) => {
         if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
 
         console.log("✅ Sent:", customer.email);
-        insertLog.run(customer.id, template.id, "sent",   new Date().toISOString());
+        insertLog.run(bizId, customer.id, template.id, "sent",   new Date().toISOString());
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
         console.error("❌ Failed:", customer.email, err.message);
-        insertLog.run(customer.id, template.id, "failed", new Date().toISOString());
+        insertLog.run(bizId, customer.id, template.id, "failed", new Date().toISOString());
         results.push({ email: customer.email, status: "failed", error: err.message });
       }
     }
@@ -127,7 +124,7 @@ router.post("/", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("🔥 Crash:", err);
+    console.error("🔥 Broadcast crash:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

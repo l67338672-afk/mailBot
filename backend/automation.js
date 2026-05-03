@@ -5,7 +5,6 @@ function interpolate(text, vars) {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 }
 
-// Convert plain text body to minimal HTML (only <p> tags)
 function toHtml(text) {
   return text
     .split(/\n\n+/)
@@ -21,32 +20,21 @@ async function sendEmail({ to, subject, textBody, fromName, fromEmail }) {
     return { success: false, preview: true };
   }
 
-  const messageId = `<${Date.now()}-${to.replace(/[^a-zA-Z0-9]/g, "")}>`;
+  const msgId = `<${Date.now()}-${to.replace(/[^a-zA-Z0-9]/g, "")}>`;
 
   try {
     await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
-        sender: {
-          name:  fromName  || process.env.FROM_NAME  || "MailBot",
-          email: fromEmail || process.env.FROM_EMAIL,
-        },
-        to:      [{ email: to }],
-        replyTo: { email: fromEmail || process.env.FROM_EMAIL },
+        sender:      { name: fromName || "MailBot", email: fromEmail || process.env.FROM_EMAIL },
+        to:          [{ email: to }],
+        replyTo:     { email: fromEmail || process.env.FROM_EMAIL },
         subject,
         textContent: textBody,
         htmlContent: toHtml(textBody),
-        headers: {
-          "Message-ID": messageId,
-          "X-Mailer":   "MailBot/1.0",
-        },
+        headers:     { "Message-ID": msgId, "X-Mailer": "MailBot/1.0" },
       },
-      {
-        headers: {
-          "api-key":      apiKey,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { "api-key": apiKey, "Content-Type": "application/json" } }
     );
 
     console.log("✅ Sent →", to);
@@ -60,40 +48,57 @@ async function sendEmail({ to, subject, textBody, fromName, fromEmail }) {
 async function runAutomation() {
   console.log("⚡ Automation running...");
 
-  let customers, campaigns;
-
+  let businesses;
   try {
-    customers = db.prepare("SELECT * FROM customers").all();
-    campaigns = db.prepare("SELECT * FROM campaigns ORDER BY day_offset ASC").all();
+    businesses = db.prepare("SELECT * FROM businesses").all();
   } catch (err) {
-    console.error("❌ DB read failed:", err.message);
+    console.error("❌ Could not load businesses:", err.message);
     return;
   }
 
-  if (!customers.length) { console.log("ℹ️  No customers found."); return; }
-  if (!campaigns.length) { console.log("ℹ️  No campaigns found."); return; }
+  if (!businesses.length) { console.log("ℹ️  No businesses found."); return; }
+
+  for (const business of businesses) {
+    await runForBusiness(business);
+  }
+
+  console.log("✅ Automation cycle complete.");
+}
+
+async function runForBusiness(business) {
+  const bizId = business.id;
+
+  let customers, campaigns;
+  try {
+    customers = db.prepare("SELECT * FROM customers WHERE business_id = ?").all(bizId);
+    campaigns = db.prepare("SELECT * FROM campaigns WHERE business_id = ? ORDER BY day_offset ASC").all(bizId);
+  } catch (err) {
+    console.error(`❌ DB read failed for business ${bizId}:`, err.message);
+    return;
+  }
+
+  if (!customers.length || !campaigns.length) return;
 
   const now = Date.now();
 
   const alreadySentStmt = db.prepare(
-    "SELECT 1 FROM sent_emails WHERE customer_id = ? AND campaign_id = ? LIMIT 1"
+    "SELECT 1 FROM sent_emails WHERE business_id = ? AND customer_id = ? AND campaign_id = ? LIMIT 1"
   );
   const insertSentStmt = db.prepare(
-    "INSERT INTO sent_emails (customer_id, campaign_id) VALUES (?, ?)"
+    "INSERT INTO sent_emails (business_id, customer_id, campaign_id) VALUES (?, ?, ?)"
   );
   const updateStageStmt = db.prepare(
-    "UPDATE customers SET last_stage_sent = ? WHERE id = ?"
+    "UPDATE customers SET last_stage_sent = ? WHERE id = ? AND business_id = ?"
   );
 
   for (const customer of customers) {
     let daysPassed;
-
     try {
       const created = new Date(customer.created_at).getTime();
       if (isNaN(created)) throw new Error("Invalid created_at date");
       daysPassed = Math.floor((now - created) / (1000 * 60 * 60 * 24));
     } catch (err) {
-      console.error(`❌ Bad created_at for customer ${customer.id}:`, err.message);
+      console.error(`❌ Bad created_at — customer ${customer.id}:`, err.message);
       continue;
     }
 
@@ -101,55 +106,45 @@ async function runAutomation() {
       name:          customer.name          || "",
       email:         customer.email         || "",
       company:       customer.company       || "",
-      business_name: customer.business_name || customer.company || process.env.FROM_NAME || "",
+      business_name: customer.business_name || customer.company || business.name || "",
     };
 
-    const fromName  = customer.business_name  || customer.company || process.env.FROM_NAME  || "MailBot";
-    const fromEmail = customer.business_email || process.env.FROM_EMAIL;
+    const fromName  = customer.business_name  || customer.company || business.name  || "MailBot";
+    const fromEmail = customer.business_email || business.email   || process.env.FROM_EMAIL;
 
     for (let i = 0; i < campaigns.length; i++) {
       const campaign = campaigns[i];
 
-      // Day gate: do not send future campaigns early
       if (daysPassed < campaign.day_offset) continue;
 
-      // Dedup gate: never send the same campaign to the same customer twice
       try {
-        const alreadySent = alreadySentStmt.get(customer.id, campaign.id);
+        const alreadySent = alreadySentStmt.get(bizId, customer.id, campaign.id);
         if (alreadySent) {
           console.log(`⏭️  Already sent Day ${campaign.day_offset} → ${customer.email}`);
           continue;
         }
       } catch (err) {
-        console.error(
-          `❌ Dedup check failed — customer ${customer.id} / campaign ${campaign.id}:`,
-          err.message
-        );
+        console.error(`❌ Dedup check failed — biz ${bizId} / customer ${customer.id} / campaign ${campaign.id}:`, err.message);
         continue;
       }
 
       const subject  = interpolate(campaign.subject, vars);
       const textBody = interpolate(campaign.body,    vars);
 
-      console.log(`📩 Sending Day ${campaign.day_offset} → ${customer.email} (from: ${fromName})`);
+      console.log(`📩 [biz ${bizId}] Day ${campaign.day_offset} → ${customer.email} (from: ${fromName})`);
 
       const result = await sendEmail({ to: customer.email, subject, textBody, fromName, fromEmail });
 
       if (result.success) {
         try {
-          insertSentStmt.run(customer.id, campaign.id);
-          updateStageStmt.run(i + 1, customer.id);
+          insertSentStmt.run(bizId, customer.id, campaign.id);
+          updateStageStmt.run(i + 1, customer.id, bizId);
         } catch (err) {
-          console.error(
-            `❌ DB write failed after send — customer ${customer.id} / campaign ${campaign.id}:`,
-            err.message
-          );
+          console.error(`❌ DB write failed — biz ${bizId} / customer ${customer.id} / campaign ${campaign.id}:`, err.message);
         }
       }
     }
   }
-
-  console.log("✅ Automation cycle complete.");
 }
 
 module.exports = runAutomation;

@@ -3,23 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MailBot Dashboard</title>
+  <title>MailBot</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #22263a;
-      --border: #2e3350;
-      --accent: #6c63ff;
+      --bg:           #0f1117;
+      --surface:      #1a1d27;
+      --surface2:     #22263a;
+      --border:       #2e3350;
+      --accent:       #6c63ff;
       --accent-hover: #7d75ff;
-      --success: #22c55e;
-      --error: #ef4444;
-      --warn: #f59e0b;
-      --text: #e2e8f0;
-      --muted: #8892a4;
-      --radius: 10px;
+      --success:      #22c55e;
+      --error:        #ef4444;
+      --warn:         #f59e0b;
+      --text:         #e2e8f0;
+      --muted:        #8892a4;
+      --radius:       10px;
     }
 
     body {
@@ -29,344 +29,425 @@
       min-height: 100vh;
     }
 
-    /* ── Layout ── */
+    /* ─── Both screens hidden by default — JS decides which to show ─── */
+    #auth-screen  { display: none; }
+    #app-screen   { display: none; }
+
+    /* ── Auth ── */
+    #auth-screen {
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .auth-logo          { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .auth-logo span     { color: var(--accent); }
+    .auth-tagline       { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+    .auth-tabs          { display: flex; margin-bottom: 22px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .auth-tab           { flex: 1; padding: 9px; font-size: 13px; font-weight: 500; border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all .15s; }
+    .auth-tab.active    { background: var(--accent); color: #fff; }
+    .auth-form          { display: flex; flex-direction: column; gap: 13px; }
+    .auth-form input    { padding: 10px 12px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; width: 100%; }
+    .auth-form input:focus { border-color: var(--accent); }
+    .auth-form input::placeholder { color: var(--muted); }
+    .auth-err           { font-size: 12px; color: var(--error); background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); padding: 8px 12px; border-radius: 6px; display: none; }
+    .auth-err.show      { display: block; }
+
+    /* ── App ── */
     header {
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 18px 32px;
+      padding: 15px 30px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
     }
-    header .logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-    header .logo span { color: var(--accent); }
-    header .badge {
-      margin-left: auto;
-      font-size: 12px;
-      padding: 3px 10px;
-      border-radius: 99px;
-      background: var(--surface2);
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
+    .logo           { font-size: 20px; font-weight: 700; }
+    .logo span      { color: var(--accent); }
+    .biz-pill       { font-size: 12px; color: var(--muted); background: var(--surface2); padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); }
+    .hbadge         { font-size: 12px; padding: 3px 10px; border-radius: 99px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
-    main { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
-
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 26px 30px; max-width: 1300px; margin: 0 auto; }
     @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
 
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      gap: 12px;
-    }
-    .card-header h2 { font-size: 15px; font-weight: 600; }
-    .card-header .count {
-      font-size: 12px;
-      color: var(--muted);
-      background: var(--surface2);
-      padding: 2px 8px;
-      border-radius: 99px;
-      border: 1px solid var(--border);
-    }
-    .card-body { padding: 16px 20px; }
+    .card                { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .card-header         { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--border); gap: 10px; }
+    .card-header h2      { font-size: 14px; font-weight: 600; }
+    .count               { font-size: 11px; color: var(--muted); background: var(--surface2); padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); }
+    .card-body           { padding: 14px 18px; }
 
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      padding: 7px 14px;
-      border-radius: 7px;
-      border: none;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn                 { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; padding: 7px 14px; border-radius: 7px; border: none; cursor: pointer; transition: all .15s; white-space: nowrap; }
+    .btn:disabled        { opacity: .45; cursor: not-allowed; }
+    .btn-primary         { background: var(--accent); color: #fff; }
     .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-    .btn-ghost     { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost           { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
     .btn-ghost:hover:not(:disabled) { background: var(--border); }
-    .btn-success   { background: var(--success); color: #fff; }
+    .btn-success         { background: var(--success); color: #fff; }
     .btn-success:hover:not(:disabled) { background: #16a34a; }
-    .btn-danger    { background: transparent; color: var(--error); border: 1px solid var(--error); padding: 3px 8px; font-size: 11px; }
+    .btn-danger          { background: transparent; color: var(--error); border: 1px solid rgba(239,68,68,.4); padding: 3px 8px; font-size: 11px; }
     .btn-danger:hover:not(:disabled) { background: var(--error); color: #fff; }
+    .btn-logout          { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 5px 12px; font-size: 12px; margin-left: auto; }
+    .btn-logout:hover    { color: var(--error); border-color: rgba(239,68,68,.4); }
 
-    /* ── Lists ── */
-    .list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
-    .list:empty::after { content: "Nothing here yet."; color: var(--muted); font-size: 13px; display: block; padding: 12px 0; }
+    .list                { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+    .list:empty::after   { content: "Nothing here yet."; color: var(--muted); font-size: 13px; display: block; padding: 10px 0; }
+    .list-item           { display: flex; align-items: center; gap: 10px; padding: 9px 11px; background: var(--surface2); border-radius: 8px; border: 1px solid transparent; transition: border-color .15s; cursor: pointer; }
+    .list-item:hover     { border-color: var(--border); }
+    .list-item.selected  { border-color: var(--accent); }
+    .list-item input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; flex-shrink: 0; }
+    .item-meta           { flex: 1; min-width: 0; }
+    .item-name           { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-sub            { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .list-actions        { display: flex; gap: 8px; margin-top: 10px; }
 
-    .list-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      background: var(--surface2);
-      border-radius: 8px;
-      border: 1px solid transparent;
-      transition: border-color 0.15s;
-      cursor: pointer;
-    }
-    .list-item:hover { border-color: var(--border); }
-    .list-item.selected { border-color: var(--accent); }
-
-    .list-item input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
-
-    .item-meta { flex: 1; min-width: 0; }
-    .item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item-sub  { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-
-    .list-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-
-    /* ── Template selector ── */
-    .select-wrap { position: relative; }
-    select {
-      width: 100%;
-      padding: 9px 12px;
-      background: var(--surface2);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 13px;
-      appearance: none;
-      cursor: pointer;
-      outline: none;
-    }
-    select:focus { border-color: var(--accent); }
-
-    /* ── Toast / Banner ── */
-    #toast {
-      position: fixed;
-      bottom: 28px;
-      right: 28px;
-      min-width: 260px;
-      max-width: 420px;
-      padding: 13px 18px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
-      transform: translateY(80px);
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(.34,1.56,.64,1);
-      pointer-events: none;
-      z-index: 9999;
-    }
-    #toast.show { transform: translateY(0); opacity: 1; }
-    #toast.success { background: var(--success); color: #fff; }
-    #toast.error   { background: var(--error);   color: #fff; }
-    #toast.info    { background: var(--accent);  color: #fff; }
-    #toast.warn    { background: var(--warn);    color: #000; }
-
-    /* ── Broadcast panel ── */
-    .broadcast-panel { grid-column: 1 / -1; }
-    .broadcast-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: end; }
-    @media (max-width: 640px) { .broadcast-grid { grid-template-columns: 1fr; } }
-
-    .field { display: flex; flex-direction: column; gap: 6px; }
-    .field label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
-
-    /* ── Results table ── */
-    .results-wrap { margin-top: 16px; display: none; }
-    .results-wrap.visible { display: block; }
-    .summary-bar {
-      display: flex;
-      gap: 16px;
-      padding: 12px 16px;
-      background: var(--surface2);
-      border-radius: 8px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .summary-item { font-size: 13px; }
-    .summary-item strong { color: var(--success); }
-    .summary-item.fail strong { color: var(--error); }
-
-    .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .result-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-    .result-table td { padding: 7px 10px; border-bottom: 1px solid var(--surface2); }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
-    .pill.sent   { background: rgba(34,197,94,0.15); color: var(--success); }
-    .pill.failed { background: rgba(239,68,68,0.15); color: var(--error); }
-    .pill.preview { background: rgba(108,99,255,0.15); color: var(--accent); }
-
-    /* ── Spinner ── */
-    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Form row ── */
-    .add-form { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-    .add-form input {
-      flex: 1;
-      min-width: 120px;
-      padding: 8px 10px;
-      background: var(--surface2);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      font-size: 13px;
-      outline: none;
-    }
+    .add-form            { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .add-form input      { flex: 1; min-width: 100px; padding: 8px 10px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 7px; font-size: 13px; outline: none; }
     .add-form input:focus { border-color: var(--accent); }
     .add-form input::placeholder { color: var(--muted); }
 
-    /* scrollbar */
-    .list::-webkit-scrollbar { width: 5px; }
+    select               { width: 100%; padding: 9px 12px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; appearance: none; outline: none; cursor: pointer; }
+    select:focus         { border-color: var(--accent); }
+
+    .field               { display: flex; flex-direction: column; gap: 6px; }
+    .field label         { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .5px; text-transform: uppercase; }
+
+    .broadcast-panel     { grid-column: 1 / -1; }
+    .broadcast-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end; }
+    @media (max-width: 640px) { .broadcast-grid { grid-template-columns: 1fr; } }
+
+    .results-wrap        { margin-top: 14px; display: none; }
+    .results-wrap.visible { display: block; }
+    .summary-bar         { display: flex; gap: 16px; padding: 10px 14px; background: var(--surface2); border-radius: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .summary-item        { font-size: 13px; }
+    .summary-item strong { color: var(--success); }
+    .summary-item.fail strong { color: var(--error); }
+    .result-table        { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .result-table th     { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 10px; border-bottom: 1px solid var(--border); }
+    .result-table td     { padding: 6px 10px; border-bottom: 1px solid var(--surface2); }
+    .pill                { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .pill.sent           { background: rgba(34,197,94,.15); color: var(--success); }
+    .pill.failed         { background: rgba(239,68,68,.15); color: var(--error); }
+    .pill.preview        { background: rgba(108,99,255,.15); color: var(--accent); }
+
+    .spinner             { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin      { to { transform: rotate(360deg); } }
+
+    #toast               { position: fixed; bottom: 22px; right: 22px; min-width: 230px; max-width: 400px; padding: 11px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: 0 8px 30px rgba(0,0,0,.4); transform: translateY(70px); opacity: 0; transition: all .3s cubic-bezier(.34,1.56,.64,1); pointer-events: none; z-index: 9999; }
+    #toast.show          { transform: translateY(0); opacity: 1; }
+    #toast.success       { background: var(--success); color: #fff; }
+    #toast.error         { background: var(--error);   color: #fff; }
+    #toast.info          { background: var(--accent);  color: #fff; }
+    #toast.warn          { background: var(--warn);    color: #000; }
+
+    .list::-webkit-scrollbar       { width: 4px; }
     .list::-webkit-scrollbar-track { background: transparent; }
     .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">Mail<span>Bot</span></div>
-  <div class="badge" id="health-badge">⬤ connecting…</div>
-</header>
+<!-- ══════════════════ AUTH SCREEN ══════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">Mail<span>Bot</span></div>
+    <div class="auth-tagline">Email automation for salons</div>
 
-<main>
-
-  <!-- ── Customers ── -->
-  <div class="card">
-    <div class="card-header">
-      <h2>👥 Customers</h2>
-      <span class="count" id="customer-count">0</span>
-      <button class="btn btn-ghost" onclick="loadCustomers()">↺ Refresh</button>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login"    onclick="switchTab('login')">Login</button>
+      <button class="auth-tab"        id="tab-register" onclick="switchTab('register')">Register</button>
     </div>
-    <div class="card-body">
-      <div class="list" id="customer-list"></div>
 
-      <div class="list-actions">
-        <button class="btn btn-ghost" onclick="selectAllCustomers()">Select All</button>
-        <button class="btn btn-ghost" onclick="deselectAllCustomers()">Deselect All</button>
-      </div>
+    <div class="auth-err" id="auth-err"></div>
 
-      <!-- Add customer form -->
-      <div class="add-form">
-        <input id="new-name"    placeholder="Name" />
-        <input id="new-email"   placeholder="Email" type="email" />
-        <input id="new-company" placeholder="Company" />
-        <button class="btn btn-primary" onclick="addCustomer()">+ Add</button>
-      </div>
+    <div id="form-login" class="auth-form">
+      <input id="login-email"    type="email"    placeholder="Email address"  autocomplete="email" />
+      <input id="login-password" type="password" placeholder="Password"       autocomplete="current-password" />
+      <button class="btn btn-primary" id="btn-login" onclick="handleLogin()">Login</button>
+    </div>
+
+    <div id="form-register" class="auth-form" style="display:none">
+      <input id="reg-name"     type="text"     placeholder="Salon / Business name" autocomplete="organization" />
+      <input id="reg-email"    type="email"    placeholder="Email address"          autocomplete="email" />
+      <input id="reg-password" type="password" placeholder="Password (min 6 chars)" autocomplete="new-password" />
+      <button class="btn btn-primary" id="btn-register" onclick="handleRegister()">Create Account</button>
     </div>
   </div>
+</div>
 
-  <!-- ── Templates ── -->
-  <div class="card">
-    <div class="card-header">
-      <h2>📄 Templates</h2>
-      <span class="count" id="template-count">0</span>
-      <button class="btn btn-ghost" onclick="loadTemplates()">↺ Refresh</button>
-    </div>
-    <div class="card-body">
-      <div class="list" id="template-list"></div>
+<!-- ══════════════════ APP SCREEN ══════════════════ -->
+<div id="app-screen">
+  <header>
+    <div class="logo">Mail<span>Bot</span></div>
+    <span class="biz-pill" id="biz-name"></span>
+    <div class="hbadge" id="health-badge">⬤ connecting…</div>
+    <button class="btn btn-logout" onclick="logout()">Logout</button>
+  </header>
 
-      <div style="margin-top:14px; font-size:12px; color:var(--muted);">
-        Supports <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{name}}</code>,
-        <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{email}}</code>,
-        <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{company}}</code>
+  <main>
+
+    <!-- Customers -->
+    <div class="card">
+      <div class="card-header">
+        <h2>👥 Customers</h2>
+        <span class="count" id="customer-count">0</span>
+        <button class="btn btn-ghost" onclick="loadCustomers()">↺</button>
+      </div>
+      <div class="card-body">
+        <div class="list" id="customer-list"></div>
+        <div class="list-actions">
+          <button class="btn btn-ghost" onclick="selectAllCustomers()">Select All</button>
+          <button class="btn btn-ghost" onclick="deselectAllCustomers()">Deselect All</button>
+        </div>
+        <div class="add-form">
+          <input id="new-name"    placeholder="Name" />
+          <input id="new-email"   type="email" placeholder="Email" />
+          <input id="new-company" placeholder="Salon / Company" />
+          <button class="btn btn-primary" onclick="addCustomer()">+ Add</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- ── Campaigns ── -->
-  <div class="card">
-    <div class="card-header">
-      <h2>📢 Campaigns</h2>
-      <button class="btn btn-ghost" onclick="loadCampaigns()">↺ Refresh</button>
-    </div>
-    <div class="card-body">
-      <div class="add-form">
-        <input id="c-name"    placeholder="Name" />
-        <input id="c-day"     type="number" placeholder="Day offset" />
-        <input id="c-subject" placeholder="Subject" />
-        <input id="c-body"    placeholder="Body" />
-        <button class="btn btn-primary" onclick="addCampaign()">+ Add</button>
+    <!-- Templates -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📄 Templates</h2>
+        <span class="count" id="template-count">0</span>
+        <button class="btn btn-ghost" onclick="loadTemplates()">↺</button>
       </div>
-      <div class="list" id="campaign-list" style="margin-top:12px;"></div>
+      <div class="card-body">
+        <div class="list" id="template-list"></div>
+        <div style="margin-top:10px;font-size:11px;color:var(--muted);">
+          Supports
+          <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{name}}</code>
+          <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">{{business_name}}</code>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- ── Broadcast ── -->
-  <div class="card broadcast-panel">
-    <div class="card-header">
-      <h2>🚀 Broadcast</h2>
+    <!-- Campaigns -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📢 Campaigns</h2>
+        <button class="btn btn-ghost" onclick="loadCampaigns()">↺</button>
+      </div>
+      <div class="card-body">
+        <div class="add-form">
+          <input id="c-name"    placeholder="Name" />
+          <input id="c-day"     type="number" placeholder="Day" style="max-width:80px" />
+          <input id="c-subject" placeholder="Subject" />
+          <input id="c-body"    placeholder="Body" />
+          <button class="btn btn-primary" onclick="addCampaign()">+ Add</button>
+        </div>
+        <div class="list" id="campaign-list" style="margin-top:10px;"></div>
+      </div>
     </div>
-    <div class="card-body">
-      <div class="broadcast-grid">
-        <div class="field">
-          <label>Template</label>
-          <div class="select-wrap">
+
+    <!-- Broadcast -->
+    <div class="card broadcast-panel">
+      <div class="card-header"><h2>🚀 Broadcast</h2></div>
+      <div class="card-body">
+        <div class="broadcast-grid">
+          <div class="field">
+            <label>Template</label>
             <select id="broadcast-template">
               <option value="">— select a template —</option>
             </select>
           </div>
+          <div class="field" style="flex-direction:row;gap:8px;">
+            <button class="btn btn-ghost"   id="btn-sel" onclick="sendBroadcast(false)">Send to Selected</button>
+            <button class="btn btn-success" id="btn-all" onclick="sendBroadcast(true)">Send to All</button>
+          </div>
         </div>
-        <div class="field" style="flex-direction:row; gap:10px;">
-          <button class="btn btn-ghost"    id="btn-send-selected" onclick="sendBroadcast(false)">
-            Send to Selected
-          </button>
-          <button class="btn btn-success"  id="btn-send-all"      onclick="sendBroadcast(true)">
-            Send to All
-          </button>
+        <div class="results-wrap" id="results-wrap">
+          <div class="summary-bar" id="summary-bar"></div>
+          <table class="result-table">
+            <thead><tr><th>Email</th><th>Status</th><th>Note</th></tr></thead>
+            <tbody id="result-body"></tbody>
+          </table>
         </div>
-      </div>
-
-      <div class="results-wrap" id="results-wrap">
-        <div class="summary-bar" id="summary-bar"></div>
-        <table class="result-table">
-          <thead>
-            <tr><th>Email</th><th>Status</th><th>Note</th></tr>
-          </thead>
-          <tbody id="result-body"></tbody>
-        </table>
       </div>
     </div>
-  </div>
 
-</main>
+  </main>
+</div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 <script>
-  // ── State ─────────────────────────────────────────────────────────────────
-  let customers = [];
-  let templates = [];
+  // ════════════════════════════════════════════════
+  //  STRICT AUTH GATE — runs before anything else
+  // ════════════════════════════════════════════════
+  let TOKEN    = localStorage.getItem("mb_token")    || null;
+  let BUSINESS = JSON.parse(localStorage.getItem("mb_business") || "null");
 
-  // ── Toast ─────────────────────────────────────────────────────────────────
-  let toastTimer;
-  function toast(msg, type = "info") {
-    const el = document.getElementById("toast");
-    el.textContent = msg;
-    el.className = `show ${type}`;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
+  (function boot() {
+    if (TOKEN && BUSINESS) {
+      showApp();
+    } else {
+      // Wipe any stale state
+      TOKEN    = null;
+      BUSINESS = null;
+      localStorage.removeItem("mb_token");
+      localStorage.removeItem("mb_business");
+      showAuth();
+    }
+  })();
+
+  function showAuth() {
+    document.getElementById("auth-screen").style.display = "flex";
+    document.getElementById("app-screen").style.display  = "none";
   }
 
-  // ── API helper ────────────────────────────────────────────────────────────
+  function showApp() {
+    document.getElementById("auth-screen").style.display = "none";
+    document.getElementById("app-screen").style.display  = "block";
+    document.getElementById("biz-name").textContent = BUSINESS?.name || "";
+    checkHealth();
+    loadCustomers();
+    loadTemplates();
+    loadCampaigns();
+  }
+
+  // ── Tab switching ─────────────────────────────────
+  function switchTab(tab) {
+    document.getElementById("form-login").style.display    = tab === "login"    ? "flex" : "none";
+    document.getElementById("form-register").style.display = tab === "register" ? "flex" : "none";
+    document.getElementById("tab-login").classList.toggle("active",    tab === "login");
+    document.getElementById("tab-register").classList.toggle("active", tab === "register");
+    clearErr();
+  }
+
+  function showErr(msg) {
+    const el = document.getElementById("auth-err");
+    el.textContent = msg;
+    el.classList.add("show");
+  }
+  function clearErr() {
+    document.getElementById("auth-err").classList.remove("show");
+  }
+
+  // ── Register ──────────────────────────────────────
+  async function handleRegister() {
+    clearErr();
+    const name     = document.getElementById("reg-name").value.trim();
+    const email    = document.getElementById("reg-email").value.trim();
+    const password = document.getElementById("reg-password").value;
+
+    if (!name || !email || !password) { showErr("All fields are required."); return; }
+    if (password.length < 6)          { showErr("Password must be at least 6 characters."); return; }
+
+    const btn = document.getElementById("btn-register");
+    btn.disabled    = true;
+    btn.textContent = "Creating…";
+
+    try {
+      const res  = await fetch("/api/auth/register", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if (!data.success) { showErr(data.error || "Registration failed."); return; }
+      saveAuth(data.token, data.business);
+      showApp();
+    } catch {
+      showErr("Network error. Please try again.");
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = "Create Account";
+    }
+  }
+
+  // ── Login ─────────────────────────────────────────
+  async function handleLogin() {
+    clearErr();
+    const email    = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value;
+
+    if (!email || !password) { showErr("Email and password are required."); return; }
+
+    const btn = document.getElementById("btn-login");
+    btn.disabled    = true;
+    btn.textContent = "Logging in…";
+
+    try {
+      const res  = await fetch("/api/auth/login", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!data.success) { showErr(data.error || "Login failed."); return; }
+      saveAuth(data.token, data.business);
+      showApp();
+    } catch {
+      showErr("Network error. Please try again.");
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = "Login";
+    }
+  }
+
+  function saveAuth(token, business) {
+    TOKEN    = token;
+    BUSINESS = business;
+    localStorage.setItem("mb_token",    token);
+    localStorage.setItem("mb_business", JSON.stringify(business));
+  }
+
+  function logout() {
+    TOKEN    = null;
+    BUSINESS = null;
+    localStorage.removeItem("mb_token");
+    localStorage.removeItem("mb_business");
+    showAuth();
+  }
+
+  // ════════════════════════════════════════════════
+  //  API HELPER — always sends Bearer token
+  //  On 401 → force logout immediately
+  // ════════════════════════════════════════════════
   async function api(path, opts = {}) {
     const res = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": "Bearer " + TOKEN,
+      },
       ...opts,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
+
+    if (res.status === 401) {
+      // Token invalid or expired — force re-login
+      logout();
+      throw new Error("Session expired. Please login again.");
+    }
+
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok)              throw new Error(data.error || `HTTP ${res.status}`);
     if (data.success === false) throw new Error(data.error || "Request failed");
     return data;
   }
 
-  // ── Health check ──────────────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────
+  let toastTimer;
+  function toast(msg, type = "info") {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className   = `show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
+  }
+
+  // ── Health ────────────────────────────────────────
   async function checkHealth() {
     const badge = document.getElementById("health-badge");
     try {
@@ -379,31 +460,30 @@
     }
   }
 
-  // ── Customers ─────────────────────────────────────────────────────────────
+  // ── Customers ─────────────────────────────────────
+  let customers = [];
+
   async function loadCustomers() {
     try {
       const { data } = await api("/api/customers");
       customers = data;
       renderCustomers();
       document.getElementById("customer-count").textContent = customers.length;
-    } catch (e) {
-      toast("Failed to load customers: " + e.message, "error");
-    }
+    } catch (e) { toast("Failed to load customers: " + e.message, "error"); }
   }
 
   function renderCustomers() {
     const list = document.getElementById("customer-list");
-    if (customers.length === 0) { list.innerHTML = ""; return; }
+    if (!customers.length) { list.innerHTML = ""; return; }
     list.innerHTML = customers.map(c => `
-      <div class="list-item" data-id="${c.id}" onclick="toggleCustomer(${c.id}, event)">
-        <input type="checkbox" id="c-${c.id}" onclick="event.stopPropagation(); toggleCustomer(${c.id}, event)" />
+      <div class="list-item" onclick="toggleCustomer(${c.id}, event)">
+        <input type="checkbox" id="c-${c.id}" onclick="event.stopPropagation();toggleCustomer(${c.id},event)" />
         <div class="item-meta">
           <div class="item-name">${esc(c.name)}</div>
           <div class="item-sub">${esc(c.email)}${c.company ? " · " + esc(c.company) : ""}</div>
         </div>
-        <button class="btn btn-danger" onclick="event.stopPropagation(); deleteCustomer(${c.id})">✕</button>
-      </div>
-    `).join("");
+        <button class="btn btn-danger" onclick="event.stopPropagation();deleteCustomer(${c.id})">✕</button>
+      </div>`).join("");
   }
 
   function toggleCustomer(id, e) {
@@ -434,14 +514,12 @@
     if (!name || !email) { toast("Name and email are required", "warn"); return; }
     try {
       await api("/api/customers", { method: "POST", body: { name, email, company } });
-      document.getElementById("new-name").value = "";
-      document.getElementById("new-email").value = "";
+      document.getElementById("new-name").value    = "";
+      document.getElementById("new-email").value   = "";
       document.getElementById("new-company").value = "";
       toast("Customer added!", "success");
       await loadCustomers();
-    } catch (e) {
-      toast("Error: " + e.message, "error");
-    }
+    } catch (e) { toast("Error: " + e.message, "error"); }
   }
 
   async function deleteCustomer(id) {
@@ -449,12 +527,12 @@
       await api(`/api/customers/${id}`, { method: "DELETE" });
       toast("Customer removed", "info");
       await loadCustomers();
-    } catch (e) {
-      toast("Error: " + e.message, "error");
-    }
+    } catch (e) { toast("Error: " + e.message, "error"); }
   }
 
-  // ── Templates ─────────────────────────────────────────────────────────────
+  // ── Templates ─────────────────────────────────────
+  let templates = [];
+
   async function loadTemplates() {
     try {
       const { data } = await api("/api/templates");
@@ -462,124 +540,94 @@
       renderTemplates();
       populateTemplateSelect();
       document.getElementById("template-count").textContent = templates.length;
-    } catch (e) {
-      toast("Failed to load templates: " + e.message, "error");
-    }
+    } catch (e) { toast("Failed to load templates: " + e.message, "error"); }
   }
 
-  // ✅ NO delete button — display only
   function renderTemplates() {
     const list = document.getElementById("template-list");
-    if (templates.length === 0) { list.innerHTML = ""; return; }
+    if (!templates.length) { list.innerHTML = ""; return; }
     list.innerHTML = templates.map(t => `
       <div class="list-item">
         <div class="item-meta">
           <div class="item-name">${esc(t.name)}</div>
           <div class="item-sub">Subject: ${esc(t.subject)}</div>
         </div>
-      </div>
-    `).join("");
+      </div>`).join("");
   }
 
   function populateTemplateSelect() {
-    const sel = document.getElementById("broadcast-template");
+    const sel     = document.getElementById("broadcast-template");
     const current = sel.value;
     sel.innerHTML = `<option value="">— select a template —</option>` +
       templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
     if (current) sel.value = current;
   }
 
-  // ── Broadcast ─────────────────────────────────────────────────────────────
+  // ── Broadcast ─────────────────────────────────────
   async function sendBroadcast(all = false) {
     const templateId = document.getElementById("broadcast-template").value;
     if (!templateId) { toast("Please select a template first", "warn"); return; }
-
-    console.log("Selected templateId:", parseInt(templateId));
 
     let customerIds = null;
     if (!all) {
       customerIds = [...document.querySelectorAll("#customer-list input:checked")]
         .map(cb => parseInt(cb.id.replace("c-", "")));
-      if (customerIds.length === 0) {
-        toast("Select at least one customer, or use Send to All", "warn");
-        return;
-      }
+      if (!customerIds.length) { toast("Select at least one customer, or use Send to All", "warn"); return; }
     }
 
-    const btnSel = document.getElementById("btn-send-selected");
-    const btnAll = document.getElementById("btn-send-all");
-    btnSel.disabled = btnAll.disabled = true;
-    btnSel.innerHTML = btnAll.innerHTML = `<span class="spinner"></span> Sending…`;
+    const bSel = document.getElementById("btn-sel");
+    const bAll = document.getElementById("btn-all");
+    bSel.disabled = bAll.disabled = true;
+    bSel.innerHTML = bAll.innerHTML = `<span class="spinner"></span> Sending…`;
 
     try {
       const { summary, results, preview } = await api("/api/broadcast", {
         method: "POST",
-        body: { templateId: parseInt(templateId), customerIds },
+        body:   { templateId: parseInt(templateId), customerIds },
       });
-
       showResults(summary, results, preview);
-      toast(
-        `${preview ? "[Preview] " : ""}Sent ${summary.sent}/${summary.total} emails`,
-        summary.failed > 0 ? "warn" : "success"
-      );
+      toast(`${preview ? "[Preview] " : ""}Sent ${summary.sent}/${summary.total}`,
+        summary.failed > 0 ? "warn" : "success");
     } catch (e) {
       toast("Broadcast failed: " + e.message, "error");
     } finally {
-      btnSel.disabled = btnAll.disabled = false;
-      btnSel.textContent = "Send to Selected";
-      btnAll.textContent = "Send to All";
+      bSel.disabled = bAll.disabled = false;
+      bSel.textContent = "Send to Selected";
+      bAll.textContent = "Send to All";
     }
   }
 
   function showResults(summary, results, preview) {
-    const wrap = document.getElementById("results-wrap");
-    wrap.classList.add("visible");
-
+    document.getElementById("results-wrap").classList.add("visible");
     document.getElementById("summary-bar").innerHTML = `
       <div class="summary-item"><strong>${summary.total}</strong> total</div>
       <div class="summary-item"><strong>${summary.sent}</strong> sent</div>
       ${summary.failed > 0 ? `<div class="summary-item fail"><strong>${summary.failed}</strong> failed</div>` : ""}
-      ${preview ? `<div class="summary-item" style="color:var(--accent)">⚠ Preview mode (no SMTP configured)</div>` : ""}
-    `;
-
+      ${preview ? `<div class="summary-item" style="color:var(--accent)">⚠ Preview mode</div>` : ""}`;
     document.getElementById("result-body").innerHTML = results.map(r => `
       <tr>
         <td>${esc(r.email)}</td>
         <td><span class="pill ${preview ? "preview" : r.status}">${preview ? "preview" : r.status}</span></td>
         <td style="color:var(--muted);font-size:11px">${r.error ? esc(r.error) : ""}</td>
-      </tr>
-    `).join("");
+      </tr>`).join("");
   }
 
-  // ── Utilities ─────────────────────────────────────────────────────────────
-  function esc(str) {
-    if (!str) return "";
-    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  }
-
-  // ── Campaigns ─────────────────────────────────────────────────────────────
+  // ── Campaigns ─────────────────────────────────────
   async function loadCampaigns() {
     try {
-      const res = await fetch("/api/campaigns");
-      const data = await res.json();
+      const data = await api("/api/campaigns");
       const list = document.getElementById("campaign-list");
       if (!list) return;
-      list.innerHTML = "";
-      data.forEach(c => {
-        const div = document.createElement("div");
-        div.className = "list-item";
-        // ✅ NO delete button — display only
-        div.innerHTML = `
-          <div class="item-meta">
-            <div class="item-name">Day ${c.day_offset} — ${esc(c.name)}</div>
-            <div class="item-sub">${esc(c.subject)}</div>
-          </div>
-        `;
-        list.appendChild(div);
-      });
-    } catch (e) {
-      console.error("Failed to load campaigns:", e);
-    }
+      list.innerHTML = Array.isArray(data)
+        ? data.map(c => `
+            <div class="list-item">
+              <div class="item-meta">
+                <div class="item-name">Day ${c.day_offset} — ${esc(c.name)}</div>
+                <div class="item-sub">${esc(c.subject)}</div>
+              </div>
+            </div>`).join("")
+        : "";
+    } catch (e) { console.error("Failed to load campaigns:", e); }
   }
 
   async function addCampaign() {
@@ -587,32 +635,27 @@
     const day     = Number(document.getElementById("c-day")?.value);
     const subject = document.getElementById("c-subject")?.value.trim();
     const body    = document.getElementById("c-body")?.value.trim();
-    if (!name || !subject || !body) {
-      toast("All campaign fields are required", "warn");
-      return;
-    }
+    if (!name || !subject || !body) { toast("All campaign fields are required", "warn"); return; }
     try {
-      await fetch("/api/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, day_offset: day, subject, body })
-      });
-      document.getElementById("c-name").value = "";
-      document.getElementById("c-day").value = "";
-      document.getElementById("c-subject").value = "";
-      document.getElementById("c-body").value = "";
+      await api("/api/campaigns", { method: "POST", body: { name, day_offset: day, subject, body } });
+      ["c-name","c-day","c-subject","c-body"].forEach(id => document.getElementById(id).value = "");
       toast("Campaign added!", "success");
       loadCampaigns();
-    } catch (e) {
-      toast("Error: " + e.message, "error");
-    }
+    } catch (e) { toast("Error: " + e.message, "error"); }
   }
 
-  // ── Init ──────────────────────────────────────────────────────────────────
-  (async () => {
-    await checkHealth();
-    await Promise.all([loadCustomers(), loadTemplates(), loadCampaigns()]);
-  })();
+  // ── Utilities ─────────────────────────────────────
+  function esc(str) {
+    if (!str) return "";
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // Enter key submits whichever form is visible
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    const loginVisible = document.getElementById("form-login").style.display !== "none";
+    if (loginVisible) handleLogin(); else handleRegister();
+  });
 </script>
 </body>
 </html>

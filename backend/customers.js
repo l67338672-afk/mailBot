@@ -1,33 +1,33 @@
 const express = require("express");
-const router = express.Router();
-const db = require("./database");
+const router  = express.Router();
+const db      = require("./database");
 
-// ---------------- GET ALL CUSTOMERS ----------------
+// GET /api/customers
 router.get("/", (req, res) => {
   try {
-    const customers = db.prepare("SELECT * FROM customers").all();
+    const customers = db.prepare(
+      "SELECT * FROM customers WHERE business_id = ? ORDER BY created_at DESC"
+    ).all(req.business.id);
     res.json({ success: true, data: customers });
   } catch (err) {
     console.error("Customer fetch error:", err);
-    res.status(500).json({ error: "Failed to fetch customers" });
+    res.status(500).json({ success: false, error: "Failed to fetch customers" });
   }
 });
 
-// ---------------- ADD CUSTOMER ----------------
+// POST /api/customers
 router.post("/", (req, res) => {
   try {
     const { name, email, company, business_name, business_email } = req.body;
-
-    console.log("🔥 ADD REQUEST:", name, email, company, business_name, business_email);
-
     if (!name || !email) {
-      return res.status(400).json({ error: "Missing name or email" });
+      return res.status(400).json({ success: false, error: "Missing name or email" });
     }
 
     const result = db.prepare(`
-      INSERT INTO customers (name, email, company, business_name, business_email, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (business_id, name, email, company, business_name, business_email, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
+      req.business.id,
       name,
       email,
       company        || "",
@@ -36,30 +36,30 @@ router.post("/", (req, res) => {
       new Date().toISOString()
     );
 
-    console.log("✅ INSERT RESULT:", result);
-
+    console.log(`✅ Customer added [biz ${req.business.id}]:`, email, "→ id", result.lastInsertRowid);
     res.json({ success: true });
   } catch (err) {
     console.error("❌ INSERT ERROR:", err);
-    res.status(500).json({ error: "Insert failed" });
+    res.status(500).json({ success: false, error: "Insert failed" });
   }
 });
 
-// ---------------- DELETE CUSTOMER ----------------
+// DELETE /api/customers/:id
 router.delete("/:id", (req, res) => {
   try {
-    const { id } = req.params;
+    const result = db.prepare(
+      "DELETE FROM customers WHERE id = ? AND business_id = ?"
+    ).run(req.params.id, req.business.id);
 
-    const result = db
-      .prepare("DELETE FROM customers WHERE id = ?")
-      .run(id);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: "Customer not found" });
+    }
 
-    console.log("🗑️ DELETE RESULT:", result);
-
+    console.log(`🗑️ Customer deleted [biz ${req.business.id}]: id=${req.params.id}`);
     res.json({ success: true });
   } catch (err) {
     console.error("Customer delete error:", err);
-    res.status(500).json({ error: "Failed to delete customer" });
+    res.status(500).json({ success: false, error: "Failed to delete customer" });
   }
 });
 
