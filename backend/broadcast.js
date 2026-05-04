@@ -9,58 +9,43 @@ function interpolate(text, vars) {
 function toHtml(text) {
   return text
     .split(/\n\n+/)
-    .map(para => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+    .map(p => `<p>${p.replace(/\n/g, "<br>")}</p>`)
     .join("\n");
 }
 
-// POST /api/broadcast
 router.post("/", async (req, res) => {
   try {
     const { templateId, customerIds } = req.body;
     const bizId = req.business.id;
 
-    if (!templateId) {
+    if (!templateId)
       return res.status(400).json({ success: false, error: "templateId required" });
-    }
 
-    console.log(`📨 Broadcast [biz ${bizId}] — templateId: ${templateId}`);
+    const apiKey    = process.env.BREVO_API_KEY;
+    const fromEmail = process.env.FROM_EMAIL;
+    const fromName  = process.env.FROM_NAME || "MailBot";
+
+    if (!apiKey || !fromEmail)
+      return res.status(500).json({ success: false, error: "BREVO_API_KEY or FROM_EMAIL not configured." });
 
     const template = await db.getOne(
       "SELECT * FROM templates WHERE id = ? AND business_id = ?",
       [Number(templateId), bizId]
     );
-
-    console.log("📋 Template:", template ? `[${template.id}] ${template.name}` : "NOT FOUND");
-
-    if (!template) {
+    if (!template)
       return res.status(404).json({ success: false, error: "Template not found" });
-    }
 
     const allCustomers = await db.query(
       "SELECT * FROM customers WHERE business_id = ?",
       [bizId]
     );
 
-    const targets =
-      Array.isArray(customerIds) && customerIds.length > 0
-        ? allCustomers.filter(c => customerIds.map(Number).includes(c.id))
-        : allCustomers;
+    const targets = Array.isArray(customerIds) && customerIds.length > 0
+      ? allCustomers.filter(c => customerIds.map(Number).includes(c.id))
+      : allCustomers;
 
-    if (targets.length === 0) {
+    if (targets.length === 0)
       return res.status(400).json({ success: false, error: "No customers found" });
-    }
-
-    const API_KEY = process.env.BREVO_API_KEY;
-
-    if (!API_KEY) {
-      console.log(`⚠️  No BREVO_API_KEY — preview mode [biz ${bizId}]`);
-      return res.json({
-        success: true,
-        preview: true,
-        summary: { total: targets.length, sent: 0, failed: 0 },
-        results: targets.map(c => ({ email: c.email, status: "preview" })),
-      });
-    }
 
     const results = [];
 
@@ -72,46 +57,46 @@ router.post("/", async (req, res) => {
         business_name: customer.business_name || customer.company || req.business.name || "",
       };
 
-      const fromName  = customer.business_name  || customer.company || req.business.name  || "MailBot";
-      const fromEmail = customer.business_email || req.business.email || process.env.FROM_EMAIL;
-
       const subject  = interpolate(template.subject, vars);
       const textBody = interpolate(template.body,    vars);
       const htmlBody = toHtml(textBody);
-      const msgId    = `<${Date.now()}-${customer.email.replace(/[^a-zA-Z0-9]/g, "")}>`;
 
-      console.log(`📤 [${template.name}] → ${customer.email} | from: ${fromName}`);
+      const payload = {
+        sender:      { name: fromName, email: fromEmail },
+        to:          [{ email: customer.email }],
+        replyTo:     { email: fromEmail },
+        subject,
+        textContent: textBody,
+        htmlContent: htmlBody,
+      };
 
       try {
         const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "api-key": API_KEY },
-          body: JSON.stringify({
-            sender:      { name: fromName, email: fromEmail },
-            to:          [{ email: customer.email }],
-            replyTo:     { email: fromEmail },
-            subject,
-            textContent: textBody,
-            htmlContent: htmlBody,
-            headers:     { "Message-ID": msgId, "X-Mailer": "MailBot/1.0" },
-          }),
+          method:  "POST",
+          headers: { "Content-Type": "application/json", "api-key": apiKey },
+          body:    JSON.stringify(payload),
         });
 
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || `Brevo error ${response.status}`);
+        const data = await response.json().catch(() => ({}));
+        console.log("BREVO RESPONSE:", JSON.stringify(data));
 
-        console.log("✅ Sent:", customer.email);
+        if (!response.ok) {
+          console.error("BREVO ERROR:", JSON.stringify(data));
+          throw new Error(data.message || `HTTP ${response.status}`);
+        }
+
+        console.log(`[SEND] ✅ → ${customer.email}`);
         await db.execute(
-          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)",
-          [bizId, customer.id, template.id, "sent", new Date().toISOString()]
+          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,datetime('now'))",
+          [bizId, customer.id, template.id, "sent"]
         );
         results.push({ email: customer.email, status: "sent" });
 
       } catch (err) {
-        console.error("❌ Failed:", customer.email, err.message);
+        console.error("BREVO ERROR:", err.message);
         await db.execute(
-          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,?)",
-          [bizId, customer.id, template.id, "failed", new Date().toISOString()]
+          "INSERT INTO send_logs (business_id, customer_id, template_id, status, sent_at) VALUES (?,?,?,?,datetime('now'))",
+          [bizId, customer.id, template.id, "failed"]
         );
         results.push({ email: customer.email, status: "failed", error: err.message });
       }
@@ -119,7 +104,6 @@ router.post("/", async (req, res) => {
 
     return res.json({
       success: true,
-      preview: false,
       summary: {
         total:  results.length,
         sent:   results.filter(r => r.status === "sent").length,
